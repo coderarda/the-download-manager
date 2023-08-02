@@ -1,0 +1,11 @@
+{
+	"folders": [
+		{
+			"path": "."
+		},
+		{
+			"path": "../the-download-manager-extension"
+		}
+	],
+    "settings": {}
+}
