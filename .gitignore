@@ -90,5 +90,6 @@ typings/
 
 # Electron-Forge
 out/
+dist_utility/
 
 *.code-workspace

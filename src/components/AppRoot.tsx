@@ -1,31 +1,40 @@
-import { AppBar, CssBaseline, Drawer, IconButton, List, ListItem, Toolbar, Typography } from "@mui/material";
+import {
+    AppBar,
+    CssBaseline,
+    Drawer,
+    IconButton,
+    List,
+    ListItemButton,
+    ListItemIcon,
+    ListItemText,
+    Toolbar,
+    Typography,
+} from "@mui/material";
 import { ThemeProvider, createTheme } from "@mui/material/styles";
 import React, { useState } from "react";
 import { green } from "@mui/material/colors";
 import MenuIcon from "@mui/icons-material/Menu";
 import BackIcon from "@mui/icons-material/ArrowBack";
 import "@fontsource/roboto/500.css";
+import "@fontsource/roboto/400.css";
+import "@fontsource/roboto/700.css";
 import "@fontsource/roboto/300.css";
-import "@fontsource/roboto/100.css";
-import { Link, MemoryRouter, Routes, Route, useNavigate } from "react-router-dom";
+import {
+    Link,
+    MemoryRouter,
+    Routes,
+    Route,
+    useNavigate,
+} from "react-router-dom";
 import { HomePage } from "./HomePage";
 
 const theme = createTheme({
     palette: {
-        mode: "dark",
         primary: {
             main: green[700],
-        }
+        },
     },
-    typography: {
-        fontFamily: "'Roboto'",
-        fontWeightBold: "bold",
-        fontWeightLight: "lighter",
-        fontWeightRegular: "normal",
-        allVariants: {
-            color: "white",
-        }
-    }
+    typography: {},
 });
 
 function Navbar() {
@@ -33,16 +42,23 @@ function Navbar() {
     const navigate = useNavigate();
     return (
         <AppBar position="static">
-            <Drawer open={isOpen}>
-                <IconButton onClick={() => setIsOpen(false)}>
-                    <BackIcon />
-                </IconButton>
+            <Drawer open={isOpen} sx={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
                 <List>
-                    <ListItem>
-                        <Link style={{ textDecoration: "none", color: "initial" }} onClick={() => setIsOpen(false)} to="/downloads">
-                            <Typography>Downloads</Typography>
+                    <ListItemButton alignItems="center" onClick={() => setIsOpen(false)}>
+                        <ListItemIcon>
+                            <BackIcon />
+                        </ListItemIcon>
+                        <ListItemText primary="Go Back"/>
+                    </ListItemButton>
+                    <ListItemButton>
+                        <Link
+                            style={{ textDecoration: "none", color: "initial" }}
+                            onClick={() => setIsOpen(false)}
+                            to="/downloads"
+                        >
+                        <ListItemText primary="Downloads" />
                         </Link>
-                    </ListItem>
+                    </ListItemButton>
                 </List>
             </Drawer>
             <Toolbar variant="dense">
@@ -52,7 +68,9 @@ function Navbar() {
                 <IconButton onClick={() => setIsOpen(true)}>
                     <MenuIcon />
                 </IconButton>
-                <Typography variant="body1" marginLeft={1} component="div">Home</Typography>
+                <Typography variant="body1" marginLeft={1} component="div">
+                    Home
+                </Typography>
             </Toolbar>
         </AppBar>
     );

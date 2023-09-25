@@ -33,6 +33,5 @@ import './index.css';
 const rootNode = document.getElementById("root");
 const root = createRoot(rootNode);
 root.render(AppRoot());
-console.log('👋 This message is being logged by "renderer.js", included via webpack');
 
 

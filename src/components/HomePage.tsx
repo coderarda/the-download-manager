@@ -1,12 +1,18 @@
-import { List, ListItem } from "@mui/material";
-import React from "react";
+import { List, ListItemText } from "@mui/material";
+import { ipcRenderer } from "electron";
+import React, { useState } from "react";
+import { DownloadURLObj } from "../../shared/types";
 
 export function HomePage() {
+    const [items, setItems] = useState<string[]>([]);
+    ipcRenderer.postMessage("url", "Waiting for URLs.");
+    ipcRenderer.on("url", (ev, reply: DownloadURLObj) => {
+        setItems([...items, reply.url]);
+    });
     return (
         <>
             <List>
-                <ListItem>Demo</ListItem>
-
+                {items.map((el, i) => <ListItemText key={i}>{el}</ListItemText>)}
             </List>
         </>
     );

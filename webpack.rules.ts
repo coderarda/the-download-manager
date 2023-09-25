@@ -19,13 +19,30 @@ export const rules: Required<ModuleOptions>['rules'] = [
     },
   },
   {
-    test: /\.tsx?$/,
+    test: /\.tsx$/,
     exclude: /(node_modules|\.webpack)/,
     use: {
-      loader: 'ts-loader',
-      options: {
-        transpileOnly: true,
+        loader: 'babel-loader',
+        options: {
+          presets: ['@babel/preset-react']
+        }
       },
-    },
   },
+  {
+    test: /\.ts$/,
+    exclude: /(node_modules|\.webpack)/,
+    use: {
+        loader: 'babel-loader',
+        options: {
+          presets: ['@babel/preset-typescript']
+        }
+      },
+  },
+  {
+    test: /\.(woff(2)?|ttf|eot)$/,
+    type: 'asset/resource',
+    generator: {
+        filename: './fonts/[name][ext]',
+    },
+},
 ];

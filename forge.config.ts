@@ -8,6 +8,8 @@ import { WebpackPlugin } from '@electron-forge/plugin-webpack';
 
 import { mainConfig } from './webpack.main.config';
 import { rendererConfig } from './webpack.renderer.config';
+import UtilityProcessPlugin from "./utility_plugin";
+import { utilityConfig } from './utility_config';
 
 const config: ForgeConfig = {
   packagerConfig: {
@@ -16,10 +18,15 @@ const config: ForgeConfig = {
   rebuildConfig: {},
   makers: [new MakerSquirrel({}), new MakerZIP({}, ['darwin']), new MakerRpm({}), new MakerDeb({})],
   plugins: [
+    new UtilityProcessPlugin(utilityConfig),
     new AutoUnpackNativesPlugin({}),
     new WebpackPlugin({
+      devServer: {
+        hot: true,
+      },
       mainConfig,
       renderer: {
+        nodeIntegration: true,
         config: rendererConfig,
         entryPoints: [
           {
