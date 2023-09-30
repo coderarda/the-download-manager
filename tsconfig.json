@@ -17,5 +17,5 @@
     },
     "lib": ["WebWorker", "ES6", "ScriptHost", "DOM"],
   },
-  "include": ["src/**/*", "utility_plugin.ts", "shared"],
+  "include": ["src/**/*", "utility_plugin.ts", "shared", "types.d.ts"],
 }

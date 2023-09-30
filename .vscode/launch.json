@@ -5,8 +5,8 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "command": "bun start",
-            "name": "Run bun start",
+            "command": "yarn start",
+            "name": "Run yarn start",
             "request": "launch",
             "type": "node-terminal"
         }
