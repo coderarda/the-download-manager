@@ -93,3 +93,5 @@ out/
 dist_utility/
 
 *.code-workspace
+
+.vscode/*
