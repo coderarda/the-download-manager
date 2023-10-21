@@ -191,3 +191,4 @@ out/
 dist_utility/
 
 *.code-workspace
+.lockb

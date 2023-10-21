@@ -1,5 +1,7 @@
 export type DownloadURLObj = {
     url: string,
+    title: string,
+    filesize: number,
 };
 
 export interface IUtils {
