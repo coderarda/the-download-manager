@@ -54,7 +54,16 @@ function Navbar() {
                         <Link
                             style={{ textDecoration: "none", color: "initial" }}
                             onClick={() => setIsOpen(false)}
-                            to="/downloads"
+                            to="/"
+                        >
+                        <ListItemText primary="Home" />
+                        </Link>
+                    </ListItemButton>
+                    <ListItemButton>
+                        <Link
+                            style={{ textDecoration: "none", color: "initial" }}
+                            onClick={() => setIsOpen(false)}
+                            to="/settings"
                         >
                         <ListItemText primary="Downloads" />
                         </Link>
@@ -62,7 +71,9 @@ function Navbar() {
                 </List>
             </Drawer>
             <Toolbar variant="dense">
-                <IconButton onClick={() => navigate(-1)}>
+                <IconButton onClick={() => {
+                    navigate(-1);
+                }}>
                     <BackIcon />
                 </IconButton>
                 <IconButton onClick={() => setIsOpen(true)}>
@@ -82,8 +93,8 @@ export function AppRoot() {
             <MemoryRouter>
                 <Navbar />
                 <Routes>
-                    <Route index={true} element={<HomePage />} />
-                    <Route path="/downloads" element={<div>Downloads</div>} />
+                    <Route path="/" element={<HomePage />} />
+                    <Route path="/settings" element={<div>Settings</div>} />
                 </Routes>
                 <CssBaseline />
             </MemoryRouter>

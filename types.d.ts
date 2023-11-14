@@ -6,6 +6,12 @@ export type DownloadURLObj = {
 
 export interface IUtils {
     onUrl: (cb: (event: IpcRendererEvent, ...args: unknown[]) => void) => void;
+    getSizeInfo: (cb: (event: IpcRendererEvent, ...args: unknown[]) => void) => void;
+}
+
+export type DataObj = {
+    type: string,
+    data: unknown,
 }
 
 declare global {

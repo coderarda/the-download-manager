@@ -5,6 +5,7 @@ import type { IUtils } from "../types";
 
 const utilsObj: IUtils = {
     onUrl: (cb) => ipcRenderer.on("url", cb),
+    getSizeInfo: (cb) => ipcRenderer.on("size", cb),
 };
 
 contextBridge.exposeInMainWorld("utils", utilsObj);

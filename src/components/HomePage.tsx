@@ -1,14 +1,14 @@
 import { Table, TableBody, TableCell, TableContainer, TableHead, TableRow } from "@mui/material";
 import React, { useEffect, useState } from "react";
 import type { DownloadURLObj } from "../../types";
+import { DownloadItem } from "./DownloadItem";
 
 export function HomePage() {
     const [items, setItems] = useState<DownloadURLObj[]>([]);
-    
-    useEffect(() => {
-        window.utils.onUrl((_, msg: DownloadURLObj) => {
-            setItems([...items, msg]);
-        })
+    useEffect(() => {        
+        window.utils.onUrl((_, url: DownloadURLObj) => {
+            setItems([...items, url]);
+        });
     }, []);
     return (
         <TableContainer>
@@ -23,14 +23,7 @@ export function HomePage() {
                 </TableHead>
                 <TableBody>
                     {items.map((el, i) => {
-                        return (
-                            <TableRow key={i}>
-                                <TableCell>{el.title}</TableCell>
-                                <TableCell>{el.url}</TableCell>
-                                <TableCell>%{0 / el.filesize}</TableCell>
-                                <TableCell>{el.filesize}</TableCell>
-                            </TableRow>
-                        );
+                        return <DownloadItem key={i} {...el}></DownloadItem>
                     })}
                 </TableBody>
             </Table>
