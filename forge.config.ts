@@ -10,6 +10,7 @@ import { mainConfig } from './webpack.main.config';
 import { rendererConfig } from './webpack.renderer.config';
 import UtilityProcessPlugin from "./utility_plugin";
 import { utilityConfig } from './utility_config';
+import { downloadConfig } from './download_config';
 
 const config: ForgeConfig = {
   packagerConfig: {
@@ -19,6 +20,7 @@ const config: ForgeConfig = {
   makers: [new MakerSquirrel({}), new MakerZIP({}, ['darwin']), new MakerRpm({}), new MakerDeb({})],
   plugins: [
     new UtilityProcessPlugin(utilityConfig),
+    new UtilityProcessPlugin(downloadConfig),
     new AutoUnpackNativesPlugin({}),
     new WebpackPlugin({
       devServer: {

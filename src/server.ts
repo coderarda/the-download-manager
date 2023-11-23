@@ -1,9 +1,10 @@
 import Express from "express";
 import cors from "cors";
-import type { DownloadURLObj, DataObj } from "../types";
-import { createWriteStream } from "fs";
-import https from "https";
+import type { DownloadURLObj, ServerData } from "../types";
+import { Worker } from "worker_threads";
 import { join } from "path";
+
+const DOWNLOAD_THREAD_PATH = join(__dirname, "./download.js");
 
 const app = Express();
 
@@ -12,32 +13,26 @@ app.listen(4000, () => console.log("Listening on port 4000."));
 app.use(cors());
 app.use(Express.json());
 
+let prev_id = 0;
+
 app.post("/url", (req, res) => {
-    const data = req.body as DownloadURLObj;
-    const urlObj: DataObj = {
-        type: "url",
-        data: data,
+    const body = req.body as DownloadURLObj;
+    body.id = prev_id;
+    const data: ServerData = {
+        reference: body,
+        update: body,
     }
-    let download_size = 0;
-    process.parentPort.postMessage(urlObj);
+    prev_id++;
+    process.parentPort.postMessage(data);
+    const thread = new Worker(DOWNLOAD_THREAD_PATH, { workerData: data.reference });
+    thread.on("message", (msg: number) => {
+        const sData: ServerData = {
+            reference: data.reference,
+            update: msg,
+        }
+        process.parentPort.postMessage(sData);
+    });
     res.status(200).send("Data received!");
-    const file = createWriteStream(join(".", data.title));
-    
-    https.get(data.url, (resp) => {
-        resp.pipe(file);
-        resp.on("data", (chunk: Uint8Array) => {
-            download_size += chunk.byteLength;
-            const dataObj: DataObj = {
-                type: "size",
-                data: download_size,
-            };
-            process.parentPort.postMessage(dataObj);
-        });
-    });
-    file.on("finish", () => {
-        file.close();
-        console.log("File downloaded.");
-    });
 });
 
 
