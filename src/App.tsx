@@ -3,6 +3,7 @@ import { Outlet, Route, Routes, useNavigate } from "react-router-dom";
 import { Home } from "./Home";
 import { ThemeProvider, createTheme } from "@mui/material";
 import { blue, green, grey } from "@mui/material/colors";
+import { Settings } from "./Settings";
 
 function App() {
     const theme = createTheme({
@@ -19,6 +20,7 @@ function App() {
         <ThemeProvider theme={theme}>
             <Routes>
                 <Route path="/" element={<Home />} />
+                <Route path="/settings" element={<Settings />} />
             </Routes>
             <Outlet />
         </ThemeProvider>

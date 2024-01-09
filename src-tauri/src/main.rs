@@ -30,7 +30,6 @@ async fn post_dw(dw: String, data: web::Data<AppState>) -> std::io::Result<impl 
         .emit_all("ondownload", serde_json::to_string(&new_data).unwrap())
         .expect("Message Could not be emitted.");
 
-
     let mut res = reqwest::get(new_data.get_url())
         .await
         .expect("No data exists at the URL.");
@@ -38,6 +37,8 @@ async fn post_dw(dw: String, data: web::Data<AppState>) -> std::io::Result<impl 
     let mut file = std::fs::File::create(
         Path::new(tauri::api::path::download_dir().unwrap().join(new_data.get_file_name()).as_path())
     ).unwrap();
+
+    // Edit here to post according to IDs
 
     while let Some(buf) = res.chunk().await.expect("No chunk found!") {
         file.write(&buf).expect("Could not write to file!");

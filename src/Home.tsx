@@ -10,16 +10,30 @@ import { useState, useEffect } from "react";
 import { Download } from "./Download";
 
 export function Home() {
-    const [downloads, setDownloads] = useState<DownloadObj[]>([]);
+    const stored = sessionStorage.getItem("items");
+    const [downloads, setDownloads] = useState<DownloadObj[]>(
+        stored != null 
+        ? JSON.parse(stored) as DownloadObj[] 
+        : []
+    );
     useEffect(() => {
-            const unlisten = listen("ondownload", (e) => {
-                const data = JSON.parse(e.payload as string) as DownloadObj;
+        const unlisten = listen("ondownload", (e) => {
+            let exists = false;
+            const data = JSON.parse(e.payload as string) as DownloadObj;
+            downloads.forEach((val) => {
+                if(val.id == data.id) {
+                    exists = true
+                } 
+            })
+            if(!exists) {
                 setDownloads([...downloads, data]);
-            });
+            }
+            sessionStorage.setItem("items", JSON.stringify(downloads));
+        });
         return () => {
             unlisten.then((f) => f());
         };
-    }, []);
+    }, [downloads]);
     return (
         <Table aria-label="Downloads Table">
             <TableHead>

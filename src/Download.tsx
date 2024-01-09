@@ -16,7 +16,7 @@ export function Download({ val }: { val: DownloadObj }) {
         }
     }, []);
     return (
-        <TableRow key={val.id}>
+        <TableRow>
             <TableCell>{val.id}</TableCell>
             <TableCell>{val.title}</TableCell>
             <TableCell>{val.url}</TableCell>
