@@ -24,7 +24,7 @@ export function Home() {
                 if(val.id == data.id) {
                     exists = true
                 } 
-            })
+            });
             if(!exists) {
                 setDownloads([...downloads, data]);
             }

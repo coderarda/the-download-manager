@@ -20,7 +20,7 @@ export function Download({ val }: { val: DownloadObj }) {
             <TableCell>{val.id}</TableCell>
             <TableCell>{val.title}</TableCell>
             <TableCell>{val.url}</TableCell>
-            <TableCell>{(val.filesize / (1024 * 1024)).toFixed() + " MB"}</TableCell>
+            <TableCell>{(val.filesize / (1024 * 1024)).toFixed()} MB</TableCell>
             <TableCell>
                 % {((percentage / val.filesize) * 100).toFixed()}
             </TableCell>
