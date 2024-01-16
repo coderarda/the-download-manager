@@ -10,7 +10,7 @@ use actix_web::{
 };
 use tauri::{AppHandle, Manager};
 mod download;
-use crate::download::{DownloadObj, DownloadInfo};
+use download::{DownloadObj, DownloadInfo};
 // Learn more about Tauri commands at https://tauri.app/v1/guides/features/command
 
 #[derive(Clone)]
@@ -24,7 +24,7 @@ fn greet(name: &str) -> String {
 }
 
 #[post("/")]
-async fn post_dw(dw: String, data: web::Data<AppState>) -> std::io::Result<impl Responder> {
+async fn post_download(dw: String, data: web::Data<AppState>) -> std::io::Result<impl Responder> {
     let new_data = serde_json::from_str::<DownloadObj>(&dw).unwrap();
     data.handle
         .emit_all("ondownload", serde_json::to_string(&new_data).unwrap())
@@ -37,8 +37,6 @@ async fn post_dw(dw: String, data: web::Data<AppState>) -> std::io::Result<impl 
     let mut file = std::fs::File::create(
         Path::new(tauri::api::path::download_dir().unwrap().join(new_data.get_file_name()).as_path())
     ).unwrap();
-
-    // Edit here to post according to IDs
 
     while let Some(buf) = res.chunk().await.expect("No chunk found!") {
         file.write(&buf).expect("Could not write to file!");
@@ -57,7 +55,7 @@ fn main() {
             tauri::async_runtime::spawn(
                 HttpServer::new(move || {
                     App::new()
-                        .service(post_dw)
+                        .service(post_download)
                         .app_data(Data::new(AppState { handle: h.clone() }))
                 })
                 .bind(("localhost", 4000))?
