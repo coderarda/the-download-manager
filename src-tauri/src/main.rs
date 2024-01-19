@@ -1,16 +1,20 @@
 // Prevents additional console window on Windows in release, DO NOT REMOVE!!
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use std::{path::Path, io::Write};
+use std::collections::VecDeque;
 
 use actix_web::{
     post,
     web::{self, Data},
     App, HttpResponse, HttpServer, Responder,
 };
+use std::sync::Mutex;
 use tauri::{AppHandle, Manager};
 mod download;
-use download::{DownloadObj, DownloadInfo};
+use download::{DownloadObj, DownloadStatus};
+
+use tauri_state::TauriState;
+mod tauri_state;
 // Learn more about Tauri commands at https://tauri.app/v1/guides/features/command
 
 #[derive(Clone)]
@@ -19,30 +23,43 @@ struct AppState {
 }
 
 #[tauri::command]
-fn greet(name: &str) -> String {
-    format!("Hello, {}! You've been greeted from Rust!", name)
+async fn pause_download(state: tauri::State<'_, TauriState>, id: u32) -> Result<(), String> {
+    for d in state.downloads.lock().unwrap().iter() {
+        if d.item.get_id() == id {
+            d.clone().set_pause();
+        }
+    }
+    Ok(())
+}
+
+#[tauri::command]
+async fn resume(state: tauri::State<'_, TauriState>, id: u32) -> Result<(), String> {
+    for d in state.downloads.lock().unwrap().iter() {
+        if d.item.get_id() == id {
+            d.clone().resume_download();
+        }
+    }
+    Ok(())
+}
+
+async fn flush_downloads(vec: &Mutex<VecDeque<DownloadStatus>>, handle: AppHandle) {
+    let el = vec.lock().unwrap().pop_front().unwrap();
+    handle.emit_all("ondownload", serde_json::to_string(&el.item).unwrap())
+        .expect("Message Could not be emitted.");
+    el.download_self(handle).await;
 }
 
 #[post("/")]
 async fn post_download(dw: String, data: web::Data<AppState>) -> std::io::Result<impl Responder> {
     let new_data = serde_json::from_str::<DownloadObj>(&dw).unwrap();
-    data.handle
-        .emit_all("ondownload", serde_json::to_string(&new_data).unwrap())
-        .expect("Message Could not be emitted.");
+    
+    // Get State
+    let tauri_state: tauri::State<TauriState> = data.handle.state();
+    let mutex = &tauri_state.downloads;
+    mutex.lock().unwrap().push_back(DownloadStatus::new(new_data));
+    flush_downloads(mutex, data.handle.clone()).await;
 
-    let mut res = reqwest::get(new_data.get_url())
-        .await
-        .expect("No data exists at the URL.");
-
-    let mut file = std::fs::File::create(
-        Path::new(tauri::api::path::download_dir().unwrap().join(new_data.get_file_name()).as_path())
-    ).unwrap();
-
-    while let Some(buf) = res.chunk().await.expect("No chunk found!") {
-        file.write(&buf).expect("Could not write to file!");
-        let update = serde_json::to_string(&DownloadInfo::new(new_data.get_id(), buf.len() as u64)).unwrap();
-        data.handle.emit_all("ondownloadupdate", update).unwrap();
-    }
+    // Run retrieval part if pushed to vector etc.
 
     println!("File downloaded!");
     Ok(HttpResponse::Ok())
@@ -63,7 +80,8 @@ fn main() {
             );
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![greet])
+        .manage(TauriState { downloads: Mutex::new(VecDeque::<DownloadStatus>::new()) })
+        .invoke_handler(tauri::generate_handler![pause_download, resume])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

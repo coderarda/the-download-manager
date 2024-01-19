@@ -20,6 +20,7 @@ actix-web = "4"
 tokio = "*"
 reqwest = { version = "*", features = ["stream"] }
 futures-util = "0.3.14"
+curl = "0.4.44"
 [features]
 # this feature is used for production builds or when `devPath` points to the filesystem
 # DO NOT REMOVE!!
