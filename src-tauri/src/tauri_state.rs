@@ -1,7 +1,7 @@
-use std::{sync::Mutex, collections::VecDeque};
+use std::sync::Mutex;
 
 use crate::download::DownloadStatus;
 
 pub struct TauriState {
-    pub downloads: Mutex<VecDeque<DownloadStatus>>,
+    pub downloads: Mutex<Vec<DownloadStatus>>,
 }

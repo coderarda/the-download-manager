@@ -14,7 +14,7 @@ pub struct DownloadObj {
 
 #[derive(Clone)]
 pub struct DownloadStatus {
-    pub item: DownloadObj,
+    item: DownloadObj,
     paused: bool,
     current_range_ptr: u64,
     resume: bool,
@@ -80,6 +80,10 @@ impl DownloadStatus {
             range_ptr += buf.len() as u64;
             handle.emit_all("ondownloadupdate", update).unwrap();
         }
+    }
+
+    pub fn get_item(&self) -> DownloadObj {
+        self.item.clone()
     }
 }
 
