@@ -1,17 +1,17 @@
 // Prevents additional console window on Windows in release, DO NOT REMOVE!!
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-
 use actix_web::{
     post,
     web::{self, Data},
     App, HttpResponse, HttpServer, Responder,
 };
-use std::sync::Mutex;
+use curl::easy::Easy2;
+use std::{path::Path, sync::{Arc, Mutex}};
 use tauri::{AppHandle, Manager};
 
 mod download;
-use download::{DownloadObj, DownloadStatus};
+use download::{curl_handler::MyCurlHandler, DownloadObj, DownloadStatus};
 
 mod tauri_state;
 use tauri_state::TauriState;
@@ -23,51 +23,70 @@ struct AppState {
 }
 
 #[tauri::command]
-async fn pause_download(state: tauri::State<'_, TauriState>, id: u32) -> Result<(), String> {
-    for d in state.downloads.lock().unwrap().iter() {
+fn pause_download(state: tauri::State<'_, TauriState>, id: u32) -> Result<(), String> {
+    let mut vec = state.downloads.lock().unwrap();
+    for d in vec.iter_mut() {
         if d.get_item().get_id() == id {
-            d.clone().set_pause();
+            d.set_pause();
         }
-    }
+    }  
     Ok(())
 }
 
 #[tauri::command]
-async fn resume(state: tauri::State<'_, TauriState>, id: u32) -> Result<(), String> {
-    for d in state.downloads.lock().unwrap().iter() {
+fn resume(state: tauri::State<'_, TauriState>, id: u32) -> Result<(), String> {
+    state.downloads.lock().unwrap().iter_mut().for_each(|d| {
         if d.get_item().get_id() == id {
-            d.clone().resume_download();
+            d.resume_download();
         }
-    }
+    });
     Ok(())
 }
 
-async fn flush_downloads(vec: &Mutex<Vec<DownloadStatus>>, handle: AppHandle) {
-    // Fix here (Vec does not work)
-    let mut downloads_vec = vec.lock().unwrap();
-    while let Some(el) = downloads_vec.pop() {
-        handle
-            .emit_all("ondownload", serde_json::to_string(&el.get_item()).unwrap())
-            .expect("Message Could not be emitted.");
-        el.clone().download_self(handle.clone()).await;
+fn download_self(status_obj: Box<DownloadStatus>, handle: tauri::AppHandle) {
+    // Fix communication and pause parts. 
+    let file = std::fs::File::create(Path::new(
+        tauri::api::path::download_dir()
+            .unwrap()
+            .join(status_obj.get_item().get_file_name())
+            .as_path(),
+    ))
+    .unwrap();
+    let obj = status_obj.get_item();
+    let mut easy = Easy2::new(MyCurlHandler::new(status_obj, file, handle.clone()));
+    easy.get(true).unwrap();
+    easy.progress(true).unwrap();
+    easy.url(obj.get_url().as_str()).unwrap();
+    std::thread::spawn(move || { easy.perform().unwrap() }).join().unwrap();
+}
+
+async fn push_download(download: Box<DownloadStatus>, handle: AppHandle) {
+    let tauri_state: tauri::State<TauriState> = handle.state();
+    handle
+        .emit_all(
+            "ondownload",
+            serde_json::to_string(&download.get_item()).unwrap(),
+        )
+        .expect("Message Could not be emitted.");
+    let mut vec = tauri_state.downloads.lock().unwrap();
+    vec.push(download);
+    for el in vec.iter_mut() {
+        if !el.is_downloading() {
+            download_self(el.clone(), handle.clone());
+        }
     }
+    
+    // Mutate inside vector...
+    // Move the removal part here (inside thread)
 }
 
 #[post("/")]
 async fn post_download(dw: String, data: web::Data<AppState>) -> std::io::Result<impl Responder> {
     let new_data = serde_json::from_str::<DownloadObj>(&dw).unwrap();
     // Get State
-    let tauri_state: tauri::State<TauriState> = data.handle.state();
-    let mutex = &tauri_state.downloads;
-    mutex
-        .lock()
-        .unwrap()
-        .push(DownloadStatus::new(new_data));
-    flush_downloads(mutex, data.handle.clone()).await;
-
-    // Run retrieval part if pushed to vector etc.
-
-    println!("File downloaded!");
+    let download = DownloadStatus::new(new_data);
+    push_download(Box::new(download), data.handle.clone()).await;
+    // Download not being removed?
     Ok(HttpResponse::Ok())
 }
 
@@ -87,9 +106,13 @@ fn main() {
             Ok(())
         })
         .manage(TauriState {
-            downloads: Mutex::new(Vec::<DownloadStatus>::new()),
+            downloads: Arc::new(Mutex::new(Vec::<Box<DownloadStatus>>::new())),
+            threads: Mutex::new(Vec::new()),
         })
-        .invoke_handler(tauri::generate_handler![pause_download, resume])
+        .invoke_handler(tauri::generate_handler![
+            pause_download,
+            resume,
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

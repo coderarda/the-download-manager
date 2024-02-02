@@ -43,6 +43,7 @@ export function Home() {
                     <TableCell>URL</TableCell>
                     <TableCell>Size</TableCell>
                     <TableCell>Percentage</TableCell>
+                    <TableCell>Actions</TableCell>
                 </TableRow>
             </TableHead>
             <TableBody>
