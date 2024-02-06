@@ -18,6 +18,7 @@ pub struct DownloadStatus {
     resume: bool,
     finished: bool,
     downloading: bool,
+    curr_size: u64,
 }
 
 impl DownloadStatus {
@@ -28,9 +29,14 @@ impl DownloadStatus {
             resume: false,
             finished: false,
             downloading: false,
+            curr_size: 0,
         }
     }
 
+    pub fn set_curr_size(&mut self, size: u64) {
+        self.curr_size = size;
+    }
+    
     pub fn set_pause(&mut self) {
         self.paused = true;
         self.resume = false;
@@ -46,6 +52,10 @@ impl DownloadStatus {
         self.finished
     }
 
+    pub fn set_downloading(&mut self) {
+        self.downloading = true;
+    }
+
     pub fn is_downloading(&self) -> bool {
         self.downloading
     }
@@ -55,6 +65,14 @@ impl DownloadStatus {
             self.paused = false;
             self.resume = true;
         }
+    }
+
+    pub fn will_resume(&self) -> bool {
+        self.resume
+    }
+
+    pub fn set_resume_false(&mut self) {
+        self.resume = false;
     }
 
     pub fn get_item(&self) -> DownloadObj {

@@ -1,9 +1,13 @@
-use std::{fs::File, io::Write, sync::{Arc, Mutex}};
+use std::{
+    fs::File,
+    io::Write,
+    sync::{Arc, Mutex}, time::Duration,
+};
 
 use curl::easy::Handler;
 use tauri::{AppHandle, Manager};
 
-use super::{DownloadInfo, DownloadStatus};
+use super::DownloadStatus;
 
 pub struct MyCurlHandler {
     download: Arc<Mutex<DownloadStatus>>,
@@ -23,16 +27,13 @@ impl MyCurlHandler {
 
 impl Handler for MyCurlHandler {
     fn progress(&mut self, dltotal: f64, dlnow: f64, _ultotal: f64, _ulnow: f64) -> bool {
-        if !self.download.lock().unwrap().paused {
-            let update =
-                serde_json::to_string(&DownloadInfo::new(self.download.lock().unwrap().item.id, dlnow as u64))
-                    .unwrap();
-            self.handle
-                .emit_all("ondownloadupdate", update)
-                .expect("Failed to send progress!");
-            if dlnow == dltotal && dlnow as u64 != 0 {
-                self.download.lock().unwrap().set_finished();
-            }
+        while self.download.lock().unwrap().paused {
+            std::thread::sleep(Duration::from_millis(100));
+        }
+        self.download.lock().unwrap().set_curr_size(dlnow as u64);
+        self.handle.trigger_global("onbackendupdate", Some(dlnow.to_string()));
+        if dlnow == dltotal && dlnow as u64 != 0 {
+            self.download.lock().unwrap().set_finished();
         }
         true
     }

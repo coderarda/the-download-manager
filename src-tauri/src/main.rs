@@ -11,7 +11,7 @@ use std::{path::Path, sync::{Arc, Mutex}};
 use tauri::{AppHandle, Manager};
 
 mod download;
-use download::{curl_handler::MyCurlHandler, DownloadObj, DownloadStatus};
+use download::{curl_handler::MyCurlHandler, DownloadInfo, DownloadObj, DownloadStatus};
 
 mod tauri_state;
 use tauri_state::TauriState;
@@ -53,14 +53,37 @@ fn download_self(status_obj: Arc<Mutex<DownloadStatus>>, handle: tauri::AppHandl
     ))
     .unwrap();
     let obj = status_obj.lock().unwrap().get_item();
-    let mut easy = Easy2::new(MyCurlHandler::new(status_obj, file, handle.clone()));
+    let mut easy = Easy2::new(MyCurlHandler::new(Arc::clone(&status_obj), file, handle.clone()));
     easy.get(true).unwrap();
     easy.progress(true).unwrap();
     easy.url(obj.get_url().as_str()).unwrap();
-    std::thread::spawn(move || easy.perform().unwrap()).join().unwrap();
+    let h = handle.clone();
+    let new_obj = status_obj.clone();
+    let event_id = handle.listen_global("onbackendupdate", move |event| {
+        let tmp = new_obj.lock().unwrap();
+        let update = serde_json::to_string(&DownloadInfo::new(
+            tmp.get_item().get_id(),
+            event.payload().unwrap().parse::<u64>().unwrap(),
+        ))
+        .unwrap();
+        h.emit_all("ondownloadupdate", update).unwrap();
+    });
+
+    std::thread::spawn(move || {
+        status_obj.lock().unwrap().set_downloading();
+        easy.perform().unwrap();
+        let mut obj = status_obj.lock().unwrap();
+        while obj.is_downloading() {
+            if obj.will_resume() {
+                easy.unpause_write().unwrap();
+                obj.set_resume_false();
+            }
+        }
+        handle.unlisten(event_id);
+    }).join().unwrap();
 }
 
-async fn push_download(download: &Arc<Mutex<DownloadStatus>>, handle: AppHandle) {
+fn push_download(download: &Arc<Mutex<DownloadStatus>>, handle: AppHandle) {
     let tauri_state: tauri::State<TauriState> = handle.state();
     handle
         .emit_all(
@@ -73,14 +96,21 @@ async fn push_download(download: &Arc<Mutex<DownloadStatus>>, handle: AppHandle)
     // Move the removal part here (inside thread)
 }
 
+fn remove_finished_downloads(handle: AppHandle) {
+    let tauri_state: tauri::State<TauriState> = handle.state();
+    let mut vec = tauri_state.downloads.try_lock().expect("Could not acquire mutex lock!");
+    vec.retain(|d| !d.lock().unwrap().is_finished());
+}
+
 #[post("/")]
 async fn post_download(dw: String, data: web::Data<AppState>) -> std::io::Result<impl Responder> {
     let new_data = serde_json::from_str::<DownloadObj>(&dw).unwrap();
     // Get State
     let download = Arc::new(Mutex::new(DownloadStatus::new(new_data)));
-    push_download(&download, data.handle.clone()).await;
+    push_download(&download, data.handle.clone());
     // Download not being removed?
     download_self(download, data.handle.clone());
+    remove_finished_downloads(data.handle.clone());
     Ok(HttpResponse::Ok())
 }
 
@@ -101,7 +131,6 @@ fn main() {
         })
         .manage(TauriState {
             downloads: Arc::new(Mutex::new(Vec::<Arc<Mutex<DownloadStatus>>>::new())),
-            threads: Mutex::new(Vec::new()),
         })
         .invoke_handler(tauri::generate_handler![
             pause_download,
