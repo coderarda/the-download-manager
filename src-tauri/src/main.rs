@@ -43,6 +43,15 @@ fn resume(state: tauri::State<'_, TauriState>, id: u32) -> Result<(), String> {
     Ok(())
 }
 
+#[tauri::command]
+fn download(state: tauri::State<'_, TauriState>, handle: AppHandle, id: u32) {
+    for d in state.downloads.lock().unwrap().iter() {
+        if d.lock().unwrap().get_item().get_id() == id {
+            download_self(Arc::clone(d), handle.clone());
+        }
+    }
+}
+
 fn download_self(status_obj: Arc<Mutex<DownloadStatus>>, handle: tauri::AppHandle) {
     // Fix communication and pause parts. 
     let file = std::fs::File::create(Path::new(
@@ -109,7 +118,6 @@ async fn post_download(dw: String, data: web::Data<AppState>) -> std::io::Result
     let download = Arc::new(Mutex::new(DownloadStatus::new(new_data)));
     push_download(&download, data.handle.clone());
     // Download not being removed?
-    download_self(download, data.handle.clone());
     remove_finished_downloads(data.handle.clone());
     Ok(HttpResponse::Ok())
 }
@@ -135,6 +143,7 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             pause_download,
             resume,
+            download
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
