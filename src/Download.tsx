@@ -7,7 +7,6 @@ import { invoke } from "@tauri-apps/api";
 export function Download({ val }: { val: DownloadObj }) {
     const [percentage, setPercentage] = useState<number>(0);
     useEffect(() => {
-        invoke("download", { id: val.id });
         const f = listen("ondownloadupdate", (e) => {
             const data = JSON.parse(e.payload as string) as DownloadInfo;
             if(data.id == val.id) {

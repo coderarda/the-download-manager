@@ -1,9 +1,6 @@
 import {
     Box,
     Button,
-    FormControl,
-    Input,
-    InputLabel,
     Modal,
     SpeedDial,
     SpeedDialAction,
@@ -21,6 +18,7 @@ import { useState, useEffect } from "react";
 import { Download } from "./Download";
 import { Add, Settings } from "@mui/icons-material";
 import { useNavigate } from "react-router-dom";
+import { invoke } from "@tauri-apps/api";
 
 const style = {
     position: 'absolute' as 'absolute',
@@ -35,7 +33,6 @@ const style = {
 
 export function Home() {
     const stored = sessionStorage.getItem("items");
-    const [downloadable, setDownloadable] = useState<boolean>(false);
     const [currDownload, setCurrDownload] = useState<DownloadObj>();
     const [downloads, setDownloads] = useState<DownloadObj[]>(
         stored != null
@@ -55,14 +52,13 @@ export function Home() {
                 // Fix the download removal and registering part.
                 setCurrDownload(data);
                 setOpenAutoAddLink(true);
-                setDownloads([...downloads, data]);
             }
             sessionStorage.setItem("items", JSON.stringify(downloads));
         });
         return () => {
             unlisten.then((f) => f());
         };
-    }, [downloads]);
+    }, []);
     const [openDial, setOpenDial] = useState(false);
     const [openAddLink, setOpenAddLink] = useState(false);
     const [openAutoAddLink, setOpenAutoAddLink] = useState(false);
@@ -77,11 +73,13 @@ export function Home() {
                     <Typography id="modal-modal-title" fontWeight={"bold"} variant="h6">Add Download</Typography>
                     <TextField label="URL" size="small" fullWidth value={currDownload?.url} />
                     <Button variant="contained" color="primary" onClick={() => {
-                        setDownloadable(true);
                         setOpenAutoAddLink(false);
+                        if(currDownload != null) {
+                            setDownloads([...downloads, currDownload]);
+                            invoke("download", { id: currDownload.id });
+                        }
                     }} fullWidth>Download</Button>
                     <Button variant="contained" color="error" onClick={() => {
-                        setDownloadable(false);
                         setOpenAutoAddLink(false);
                     }} fullWidth>Cancel</Button>
                 </Box>

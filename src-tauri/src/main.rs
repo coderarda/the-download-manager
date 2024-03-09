@@ -6,12 +6,13 @@ use actix_web::{
     web::{self, Data},
     App, HttpResponse, HttpServer, Responder,
 };
-use curl::easy::Easy2;
-use std::{path::Path, sync::{Arc, Mutex}};
+use futures_util::StreamExt;
+use reqwest::header::RANGE;
+use std::{fs::File, io::Write, sync::Arc, time::Duration};
 use tauri::{AppHandle, Manager};
-
+use tokio::sync::Mutex;
 mod download;
-use download::{curl_handler::MyCurlHandler, DownloadInfo, DownloadObj, DownloadStatus};
+use download::{DownloadInfo, DownloadObj, DownloadStatus};
 
 mod tauri_state;
 use tauri_state::TauriState;
@@ -23,92 +24,143 @@ struct AppState {
 }
 
 #[tauri::command]
-fn pause_download(state: tauri::State<'_, TauriState>, id: u32) -> Result<(), String> {
-    let mut vec = state.downloads.try_lock().expect("Could not acquire mutex lock!");
-    for d in vec.iter_mut() {
-        if d.lock().unwrap().get_item().get_id() == id {
-            d.lock().unwrap().set_pause();
-        }
-    }  
-    Ok(())
-}
-
-#[tauri::command]
-fn resume(state: tauri::State<'_, TauriState>, id: u32) -> Result<(), String> {
-    state.downloads.lock().unwrap().iter_mut().for_each(|d| {
-        if d.lock().unwrap().get_item().get_id() == id {
-            d.lock().unwrap().resume_download();
-        }
-    });
-    Ok(())
-}
-
-#[tauri::command]
-fn download(state: tauri::State<'_, TauriState>, handle: AppHandle, id: u32) {
-    for d in state.downloads.lock().unwrap().iter() {
-        if d.lock().unwrap().get_item().get_id() == id {
-            download_self(Arc::clone(d), handle.clone());
-        }
-    }
-}
-
-fn download_self(status_obj: Arc<Mutex<DownloadStatus>>, handle: tauri::AppHandle) {
-    // Fix communication and pause parts. 
-    let file = std::fs::File::create(Path::new(
-        tauri::api::path::download_dir()
-            .unwrap()
-            .join(status_obj.lock().unwrap().get_item().get_file_name())
-            .as_path(),
-    ))
-    .unwrap();
-    let obj = status_obj.lock().unwrap().get_item();
-    let mut easy = Easy2::new(MyCurlHandler::new(Arc::clone(&status_obj), file, handle.clone()));
-    easy.get(true).unwrap();
-    easy.progress(true).unwrap();
-    easy.url(obj.get_url().as_str()).unwrap();
-    let h = handle.clone();
-    let new_obj = status_obj.clone();
-    let event_id = handle.listen_global("onbackendupdate", move |event| {
-        let tmp = new_obj.lock().unwrap();
-        let update = serde_json::to_string(&DownloadInfo::new(
-            tmp.get_item().get_id(),
-            event.payload().unwrap().parse::<u64>().unwrap(),
-        ))
-        .unwrap();
-        h.emit_all("ondownloadupdate", update).unwrap();
-    });
-
-    std::thread::spawn(move || {
-        status_obj.lock().unwrap().set_downloading();
-        easy.perform().unwrap();
-        let mut obj = status_obj.lock().unwrap();
-        while obj.is_downloading() {
-            if obj.will_resume() {
-                easy.unpause_write().unwrap();
-                obj.set_resume_false();
+async fn pause_download(state: tauri::State<'_, TauriState>, id: u32) -> Result<(), String> {
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    let vec_res = state.downloads.try_lock();
+    match vec_res {
+        Ok(mut vec) => {
+            for d in vec.iter_mut() {
+                if d.lock().await.get_item().get_id() == id {
+                    d.lock().await.set_pause();
+                    break;
+                }
             }
         }
-        handle.unlisten(event_id);
-    }).join().unwrap();
+        Err(err) => {
+            println!("Error occured: {err}");
+            ()
+        }
+    }
+    Ok(())
 }
 
-fn push_download(download: &Arc<Mutex<DownloadStatus>>, handle: AppHandle) {
+#[tauri::command]
+async fn resume(
+    state: tauri::State<'_, TauriState>,
+    handle: tauri::AppHandle,
+    id: u32,
+) -> Result<(), String> {
+    for d in state.downloads.lock().await.iter_mut() {
+        if d.lock().await.get_item().get_id() == id {
+            tokio::spawn(download_self(d.clone(), handle.clone()));
+            break;
+        }
+    }
+    Ok(())
+}
+
+#[tauri::command]
+async fn download(
+    state: tauri::State<'_, TauriState>,
+    handle: AppHandle,
+    id: u32,
+) -> Result<(), String> {
+    for d in state.downloads.lock().await.iter() {
+        if d.lock().await.get_item().get_id() == id {
+            tokio::spawn(download_self(d.clone(), handle.clone()));
+            break;
+        }
+    }
+    Ok(())
+}
+
+async fn download_self(
+    status_obj: Arc<Mutex<DownloadStatus>>,
+    handle: tauri::AppHandle,
+) -> Result<(), reqwest::Error> {
+    println!("Download starting...");
+    let h = handle.clone();
+    let id = status_obj.lock().await.get_item().get_id();
+    status_obj.lock().await.set_downloading();
+    let arg1 = status_obj.lock().await.get_size();
+    let arg2 = status_obj.lock().await.get_item().get_total_size();
+    let client = reqwest::Client::new();
+    let res = client
+        .get(status_obj.lock().await.get_item().get_url())
+        .header(RANGE, format!("bytes={arg1}-{arg2}"))
+        .send()
+        .await?;
+    tokio::spawn(async move {
+        let file: Option<File>;
+        let dir = tauri::api::path::download_dir()
+            .unwrap()
+            .join(status_obj.lock().await.get_item().get_file_name());
+        if dir.as_path().exists() {
+            file = Some(
+                std::fs::OpenOptions::new()
+                    .append(true)
+                    .write(true)
+                    .open(dir.as_path())
+                    .unwrap(),
+            );
+        } else {
+            file = Some(std::fs::File::create(dir.as_path()).unwrap());
+        }
+        let mut stream = res.bytes_stream();
+        let mut size = status_obj.lock().await.get_size();
+        while let Some(b) = stream.next().await {
+            size += b.as_ref().unwrap().len() as u64;
+            let update = serde_json::to_string(&DownloadInfo::new(id, size)).unwrap();
+            h.emit_all("ondownloadupdate", update).unwrap();
+            file.as_ref().unwrap().write_all(&b.unwrap()).unwrap();
+            if status_obj.lock().await.is_paused() {
+                status_obj.lock().await.set_curr_size(size);
+                return Err::<(), u32>(status_obj.lock().await.get_item().get_id());
+            }
+        }
+        if status_obj.lock().await.get_size() == status_obj.lock().await.get_item().get_total_size()
+        {
+            status_obj.lock().await.set_finished();
+            let s = handle.state::<TauriState>();
+            if s.downloads.lock().await.len() == 0 {
+                s.downloads.lock().await.pop();
+            } else {
+                s.downloads
+                    .lock()
+                    .await
+                    .remove(status_obj.lock().await.get_item().get_id() as usize);
+            }
+            drop(file);
+            println!("Download Finished!");
+        }
+        Ok::<(), u32>(())
+    })
+    .await
+    .unwrap()
+    .unwrap_or_else(|err| {
+        println!("Download with id {err} paused!");
+    });
+    Ok(())
+}
+
+async fn push_download(download: &Arc<Mutex<DownloadStatus>>, handle: AppHandle) {
     let tauri_state: tauri::State<TauriState> = handle.state();
+    tauri_state.downloads.lock().await.push(download.clone());
     handle
         .emit_all(
             "ondownload",
-            serde_json::to_string(&download.lock().unwrap().get_item()).unwrap(),
+            serde_json::to_string(&download.lock().await.get_item()).unwrap(),
         )
-        .expect("Message Could not be emitted.");  
-    tauri_state.downloads.lock().unwrap().push(download.clone()); 
-    // Mutate inside vector...
-    // Move the removal part here (inside thread)
+        .expect("Message Could not be emitted.");
 }
 
 fn remove_finished_downloads(handle: AppHandle) {
     let tauri_state: tauri::State<TauriState> = handle.state();
-    let mut vec = tauri_state.downloads.try_lock().expect("Could not acquire mutex lock!");
-    vec.retain(|d| !d.lock().unwrap().is_finished());
+    let mut vec = tauri_state
+        .downloads
+        .try_lock()
+        .expect("Could not acquire mutex lock!");
+    vec.retain(|e| !e.try_lock().unwrap().is_finished());
 }
 
 #[post("/")]
@@ -116,8 +168,7 @@ async fn post_download(dw: String, data: web::Data<AppState>) -> std::io::Result
     let new_data = serde_json::from_str::<DownloadObj>(&dw).unwrap();
     // Get State
     let download = Arc::new(Mutex::new(DownloadStatus::new(new_data)));
-    push_download(&download, data.handle.clone());
-    // Download not being removed?
+    push_download(&download, data.handle.clone()).await;
     remove_finished_downloads(data.handle.clone());
     Ok(HttpResponse::Ok())
 }
@@ -140,11 +191,7 @@ fn main() {
         .manage(TauriState {
             downloads: Arc::new(Mutex::new(Vec::<Arc<Mutex<DownloadStatus>>>::new())),
         })
-        .invoke_handler(tauri::generate_handler![
-            pause_download,
-            resume,
-            download
-        ])
+        .invoke_handler(tauri::generate_handler![pause_download, resume, download])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

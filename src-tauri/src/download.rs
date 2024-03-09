@@ -1,9 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-
-pub mod curl_handler;
-
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct DownloadObj {
     id: u32,
     url: String,
@@ -11,7 +8,7 @@ pub struct DownloadObj {
     filesize: u64,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct DownloadStatus {
     item: DownloadObj,
     paused: bool,
@@ -52,31 +49,21 @@ impl DownloadStatus {
         self.finished
     }
 
+    pub fn is_paused(&self) -> bool {
+        self.paused
+    }
+
     pub fn set_downloading(&mut self) {
         self.downloading = true;
-    }
-
-    pub fn is_downloading(&self) -> bool {
-        self.downloading
-    }
-
-    pub fn resume_download(&mut self) {
-        if !self.resume {
-            self.paused = false;
-            self.resume = true;
-        }
-    }
-
-    pub fn will_resume(&self) -> bool {
-        self.resume
-    }
-
-    pub fn set_resume_false(&mut self) {
-        self.resume = false;
+        self.paused = false;
     }
 
     pub fn get_item(&self) -> DownloadObj {
         self.item.clone()
+    }
+
+    pub fn get_size(&self) -> u64 {
+        self.curr_size
     }
 }
 
@@ -91,6 +78,10 @@ impl DownloadObj {
 
     pub fn get_url(&self) -> String {
         self.url.clone()
+    }
+
+    pub fn get_total_size(&self) -> u64{
+        self.filesize
     }
 }
 
