@@ -83,11 +83,11 @@ async fn download_self(
     let id = status_obj.lock().await.get_item().get_id();
     status_obj.lock().await.set_downloading();
     let arg1 = status_obj.lock().await.get_size();
-    let arg2 = status_obj.lock().await.get_item().get_total_size();
+    let size = status_obj.lock().await.get_item().get_total_size();
     let client = reqwest::Client::new();
     let res = client
         .get(status_obj.lock().await.get_item().get_url())
-        .header(RANGE, format!("bytes={arg1}-{arg2}"))
+        .header(RANGE, format!("bytes={arg1}-{size}"))
         .send()
         .await?;
     tokio::spawn(async move {
@@ -95,7 +95,7 @@ async fn download_self(
         let dir = tauri::api::path::download_dir()
             .unwrap()
             .join(status_obj.lock().await.get_item().get_file_name());
-        if dir.as_path().exists() {
+        if dir.as_path().exists() && status_obj.lock().await.get_size() <= size {
             file = Some(
                 std::fs::OpenOptions::new()
                     .append(true)
@@ -113,13 +113,14 @@ async fn download_self(
             let update = serde_json::to_string(&DownloadInfo::new(id, size)).unwrap();
             h.emit_all("ondownloadupdate", update).unwrap();
             file.as_ref().unwrap().write_all(&b.unwrap()).unwrap();
+            status_obj.lock().await.set_curr_size(size);
             if status_obj.lock().await.is_paused() {
-                status_obj.lock().await.set_curr_size(size);
+                drop(file);
                 return Err::<(), u32>(status_obj.lock().await.get_item().get_id());
             }
         }
-        if status_obj.lock().await.get_size() == status_obj.lock().await.get_item().get_total_size()
-        {
+        let curr = status_obj.lock().await.get_size();
+        if curr == size {
             status_obj.lock().await.set_finished();
             let s = handle.state::<TauriState>();
             if s.downloads.lock().await.len() == 0 {
