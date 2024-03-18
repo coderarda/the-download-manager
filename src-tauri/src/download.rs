@@ -72,6 +72,10 @@ impl DownloadObj {
         &self.title
     }
 
+    pub fn concat_number(&mut self) {
+        self.title.push_str(format!("(1)", ).as_str());
+    }
+
     pub fn get_id(&self) -> u32 {
         self.id
     }

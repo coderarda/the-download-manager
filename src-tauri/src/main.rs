@@ -95,7 +95,7 @@ async fn download_self(
         let dir = tauri::api::path::download_dir()
             .unwrap()
             .join(status_obj.lock().await.get_item().get_file_name());
-        if dir.as_path().exists() && status_obj.lock().await.get_size() <= size {
+        if dir.as_path().exists() && status_obj.lock().await.get_size() < size {
             file = Some(
                 std::fs::OpenOptions::new()
                     .append(true)
@@ -103,17 +103,20 @@ async fn download_self(
                     .open(dir.as_path())
                     .unwrap(),
             );
+        } else if dir.as_path().exists() && status_obj.lock().await.get_size() == size {
+            status_obj.lock().await.get_item().concat_number();
+            file = Some(std::fs::File::create(dir.as_path()).unwrap());
         } else {
             file = Some(std::fs::File::create(dir.as_path()).unwrap());
         }
         let mut stream = res.bytes_stream();
-        let mut size = status_obj.lock().await.get_size();
+        let mut new_size = status_obj.lock().await.get_size();
         while let Some(b) = stream.next().await {
-            size += b.as_ref().unwrap().len() as u64;
-            let update = serde_json::to_string(&DownloadInfo::new(id, size)).unwrap();
+            new_size += b.as_ref().unwrap().len() as u64;
+            let update = serde_json::to_string(&DownloadInfo::new(id, new_size)).unwrap();
             h.emit_all("ondownloadupdate", update).unwrap();
             file.as_ref().unwrap().write_all(&b.unwrap()).unwrap();
-            status_obj.lock().await.set_curr_size(size);
+            status_obj.lock().await.set_curr_size(new_size);
             if status_obj.lock().await.is_paused() {
                 drop(file);
                 return Err::<(), u32>(status_obj.lock().await.get_item().get_id());
