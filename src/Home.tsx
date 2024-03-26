@@ -14,7 +14,7 @@ import {
   Typography,
 } from "@mui/material";
 import { listen } from "@tauri-apps/api/event";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useContext } from "react";
 import { Download } from "./Download";
 import { Add, Settings } from "@mui/icons-material";
 import { useNavigate } from "react-router-dom";
@@ -47,7 +47,6 @@ export function Home() {
         }
       });
       if (!exists) {
-        // Fix the download removal and registering part.
         setCurrDownload(data);
         setOpenAutoAddLink(true);
       }
@@ -61,6 +60,7 @@ export function Home() {
   const [openAddLink, setOpenAddLink] = useState(false);
   const [openAutoAddLink, setOpenAutoAddLink] = useState(false);
   const navigate = useNavigate();
+  // TODO: Add filename TextField and allow TextFields to sync with the DownloadObj
   return (
     <>
       <Modal
@@ -81,9 +81,25 @@ export function Home() {
           <TextField
             label="URL"
             size="small"
+            margin="normal"
             fullWidth
             value={currDownload?.url}
-          />
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) => { 
+                if(currDownload != null) 
+                    setCurrDownload({ ...currDownload, url: e.target.value });
+            }}
+            />
+          <TextField
+            label="Filename"
+            size="small"
+            margin="normal"
+            fullWidth
+            value={currDownload?.title}
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) => { 
+                if(currDownload != null) 
+                    setCurrDownload({ ...currDownload, title: e.target.value });
+            }}
+            />
           <Box flexDirection={"row"} paddingTop={2}>
             <Button
               variant="contained"
@@ -93,7 +109,7 @@ export function Home() {
                 setOpenAutoAddLink(false);
                 if (currDownload != null) {
                   setDownloads([...downloads, currDownload]);
-                  invoke("download", { id: currDownload.id });
+                  invoke("download", { download: currDownload });
                 }
               }}
             >

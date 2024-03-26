@@ -62,6 +62,10 @@ impl DownloadStatus {
         self.item.clone()
     }
 
+    pub fn set_item(&mut self, item: DownloadObj) {
+        self.item = item
+    }
+
     pub fn get_size(&self) -> u64 {
         self.curr_size
     }
@@ -73,7 +77,7 @@ impl DownloadObj {
     }
 
     pub fn concat_number(&mut self) {
-        self.title.push_str(format!("(1)", ).as_str());
+        self.title.push_str("(1)");
     }
 
     pub fn get_id(&self) -> u32 {

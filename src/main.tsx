@@ -1,6 +1,6 @@
-import React from "react";
+import React, { createContext, useContext, useState } from "react";
 import ReactDOM from "react-dom/client";
-import { BrowserRouter, Route, Routes } from "react-router-dom";
+import { BrowserRouter, Route, Routes, createBrowserRouter, useLocation } from "react-router-dom";
 import "@fontsource/roboto/300.css";
 import "@fontsource/roboto/400.css";
 import "@fontsource/roboto/500.css";
@@ -27,15 +27,14 @@ const theme = createTheme({
 });
 
 function Root() {
-    // Replace Drawer With A Menu Component from Material UI.
     return (
         <ThemeProvider theme={theme}>
             <CssBaseline />
             <BrowserRouter>
-            <AppBarComponent title="Home"/>
+                <AppBarComponent />
                 <Routes>
-                    <Route path="/" element={<Home />} />
-                    <Route path="/settings" element={<Settings />} />
+                    <Route index element={<Home />} />
+                    <Route path="settings" element={<Settings />} />
                 </Routes>
             </BrowserRouter>
         </ThemeProvider>

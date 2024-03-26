@@ -63,10 +63,11 @@ async fn resume(
 async fn download(
     state: tauri::State<'_, TauriState>,
     handle: AppHandle,
-    id: u32,
+    download: DownloadObj,
 ) -> Result<(), String> {
-    for d in state.downloads.lock().await.iter() {
-        if d.lock().await.get_item().get_id() == id {
+    for d in state.downloads.lock().await.iter_mut() {
+        if d.lock().await.get_item().get_id() == download.get_id() {
+            d.lock().await.set_item(download);
             tokio::spawn(download_self(d.clone(), handle.clone()));
             break;
         }
