@@ -14,7 +14,7 @@ import {
   Typography,
 } from "@mui/material";
 import { listen } from "@tauri-apps/api/event";
-import React, { useState, useEffect, useContext } from "react";
+import React, { useState, useEffect } from "react";
 import { Download } from "./Download";
 import { Add, Settings } from "@mui/icons-material";
 import { useNavigate } from "react-router-dom";
@@ -60,7 +60,6 @@ export function Home() {
   const [openAddLink, setOpenAddLink] = useState(false);
   const [openAutoAddLink, setOpenAutoAddLink] = useState(false);
   const navigate = useNavigate();
-  // TODO: Add filename TextField and allow TextFields to sync with the DownloadObj
   return (
     <>
       <Modal
@@ -136,6 +135,7 @@ export function Home() {
           <Typography id="modal-modal-title" fontWeight={"bold"} variant="h6">
             Schedule Download
           </Typography>
+          {/*TODO: Schedule download modal implementation here. */}
         </Box>
       </Modal>
       <Table aria-label="Downloads Table">
