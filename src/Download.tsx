@@ -1,22 +1,22 @@
-
 import { Pause, PlayArrow } from "@mui/icons-material";
-import { IconButton, TableCell, TableRow } from "@mui/material";
+import { Box, Button, TableCell, TableRow } from "@mui/material";
 import { listen } from "@tauri-apps/api/event";
 import React, { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api";
 
 export function Download({ val }: { val: DownloadObj }) {
     const [percentage, setPercentage] = useState<number>(0);
+    const [isPaused, setIsPaused] = useState<boolean>(false);
     useEffect(() => {
         const f = listen("ondownloadupdate", (e) => {
             const data = JSON.parse(e.payload as string) as DownloadInfo;
-            if(data.id == val.id) {
+            if (data.id == val.id) {
                 setPercentage(data.chunk_size);
             }
         });
         return () => {
-            f.then((fun) => fun());
-        }
+            f.then((fun) => fun()).catch((err) => console.log(err));
+        };
     }, []);
     return (
         <TableRow>
@@ -24,16 +24,30 @@ export function Download({ val }: { val: DownloadObj }) {
             <TableCell>{val.title}</TableCell>
             <TableCell>{val.url}</TableCell>
             <TableCell>{(val.filesize / (1024 * 1024)).toFixed()} MB</TableCell>
+            <TableCell>% {((percentage / val.filesize) * 100).toFixed()}</TableCell>
             <TableCell>
-                % {((percentage / val.filesize) * 100).toFixed()}
-            </TableCell>
-            <TableCell>
-                <IconButton onClick={async () => await invoke("pause_download", { id: val.id })}>
-                    <Pause />
-                </IconButton>
-                <IconButton onClick={async () => await invoke("resume", { id: val.id })}>
-                    <PlayArrow />
-                </IconButton>
+                {/* TODO: Convert the buttons to one button changing according to pause/resume status */}
+                <Box flexDirection="row" display="flex">
+                    <Button
+                        startIcon={isPaused ? <PlayArrow /> : <Pause />}
+                        size="small"
+                        variant="contained"
+                        color="primary"
+                        onClick={
+                            async () => {
+                                if(!isPaused) {
+                                    await invoke("pause_download", { id: val.id });
+                                    setIsPaused(true);
+                                } else {
+                                    await invoke("resume", { id: val.id });
+                                    setIsPaused(false);
+                                }
+                            }
+                        }
+                    >
+                        {isPaused ? <span>Resume</span> : <span>Pause</span>}
+                    </Button>
+                </Box>
             </TableCell>
         </TableRow>
     );

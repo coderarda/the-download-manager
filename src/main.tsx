@@ -7,18 +7,18 @@ import "@fontsource/roboto/500.css";
 import "@fontsource/roboto/700.css";
 import { createTheme, ThemeProvider } from "@mui/material/styles";
 import { CssBaseline } from "@mui/material";
-import { grey, purple } from "@mui/material/colors";
+import { common, deepPurple } from "@mui/material/colors";
 import { Home } from "./Home";
 import { Settings } from "./Settings";
 import { AppBarComponent } from "./AppBarComponent";
 
 const theme = createTheme({
     palette: {
-        primary: {
-            main: purple[500],
+        text: {
+            primary: common.black,
         },
-        background: {
-            default: grey[100],
+        primary: {
+            main: deepPurple[400],
         },
     },
 });
