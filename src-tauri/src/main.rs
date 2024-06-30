@@ -38,7 +38,6 @@ async fn pause_download(state: tauri::State<'_, TauriState>, id: u32) -> Result<
         }
         Err(err) => {
             println!("Error occured: {err}");
-            ()
         }
     }
     Ok(())
@@ -52,7 +51,7 @@ async fn resume(
 ) -> Result<(), String> {
     for d in state.downloads.lock().await.iter_mut() {
         if d.lock().await.get_item().get_id() == id {
-            tokio::spawn(download_self(d.clone(), handle.clone()));
+            tokio::spawn(download_url(d.clone(), handle.clone()));
             break;
         }
     }
@@ -68,14 +67,14 @@ async fn download(
     for d in state.downloads.lock().await.iter_mut() {
         if d.lock().await.get_item().get_id() == download.get_id() {
             d.lock().await.set_item(download);
-            tokio::spawn(download_self(d.clone(), handle.clone()));
+            tokio::spawn(download_url(d.clone(), handle.clone()));
             break;
         }
     }
     Ok(())
 }
 
-async fn download_self(
+async fn download_url(
     status_obj: Arc<Mutex<DownloadStatus>>,
     handle: tauri::AppHandle,
 ) -> Result<(), reqwest::Error> {
@@ -141,9 +140,9 @@ async fn download_self(
         Ok::<(), u32>(())
     })
     .await
-    .unwrap()
-    .unwrap_or_else(|err| {
-        println!("Download with id {err} paused!");
+    .expect("Join Error occured!")
+    .unwrap_or_else(|download_id| {
+        println!("Download with id {download_id} paused!");
     });
     Ok(())
 }
@@ -160,12 +159,14 @@ async fn push_download(download: &Arc<Mutex<DownloadStatus>>, handle: AppHandle)
 }
 
 fn remove_finished_downloads(handle: AppHandle) {
-    let tauri_state: tauri::State<TauriState> = handle.state();
-    let mut vec = tauri_state
-        .downloads
-        .try_lock()
-        .expect("Could not acquire mutex lock!");
-    vec.retain(|e| !e.try_lock().unwrap().is_finished());
+    tokio::spawn(async move {
+        let state: tauri::State<TauriState> = handle.state();
+        let mut vec = state
+            .downloads
+            .lock()
+            .await;
+        vec.retain(|e| !e.try_lock().unwrap().is_finished());
+    });
 }
 
 #[post("/")]
@@ -189,7 +190,7 @@ fn main() {
                         .app_data(Data::new(AppState { handle: h.clone() }))
                 })
                 .bind(("localhost", 4000))?
-                .run(),
+                .run()
             );
             Ok(())
         })
@@ -198,5 +199,5 @@ fn main() {
         })
         .invoke_handler(tauri::generate_handler![pause_download, resume, download])
         .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .expect("Error while running tauri application");
 }

@@ -132,9 +132,56 @@ export function Home() {
                 aria-labelledby="modal-modal-title"
             >
                 <Box sx={style}>
-                    <Typography id="modal-modal-title" fontWeight={"bold"} variant="h6">
+                    <Typography
+                        marginY={2}
+                        marginX={1}
+                        id="modal-modal-title"
+                        fontWeight={"bold"}
+                        variant="h6"
+                    >
                         Add Download
                     </Typography>
+                    <TextField
+                        label="URL"
+                        size="small"
+                        margin="normal"
+                        fullWidth
+                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                            if (currDownload != null) {
+                                const filename = e.target.value.split("/").pop() as string;
+                                // TODO: Retrieve Download Info by making a request to url in Rust backend
+                                // setCurrDownload({ id: 0, filesize: 100, url: e.target.value, title: filename });
+                            }
+                        }}
+                    />
+                    <Box flexDirection={"row"} paddingTop={2}>
+                        <Button
+                            variant="contained"
+                            sx={{ marginRight: 2, position: "relative" }}
+                            color="primary"
+                            onClick={() => {
+                                setOpenAddLink(false);
+                                console.log("URL entered!");
+                                console.log(currDownload);
+                                if (currDownload != null) {
+                                    setDownloads([...downloads, currDownload]);
+                                    console.log(`Download of filename ${currDownload.title} started!`);
+                                    invoke("download", { download: currDownload });
+                                }
+                            }}
+                        >
+                            Download
+                        </Button>
+                        <Button
+                            variant="contained"
+                            color="error"
+                            onClick={() => {
+                                setOpenAddLink(false);
+                            }}
+                        >
+                            Cancel
+                        </Button>
+                    </Box>
                     {/*TODO: Schedule download modal implementation here. */}
                 </Box>
             </Modal>
