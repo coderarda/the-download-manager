@@ -24,6 +24,22 @@ struct AppState {
 }
 
 #[tauri::command]
+async fn get_download_info(url: String) -> Result<Option<DownloadObj>, String> {
+    let client = reqwest::Client::new();
+    let res = client.head(url).send().await;
+    match res {
+        Ok(result) => {
+            let obj: DownloadObj = result.json().await.unwrap();
+            return Ok(Some(obj))
+        }
+        Err(e) => {
+            println!("reqwest Error!, {e}");
+            Err(String::from("Error occured!"))
+        }
+    }
+}
+
+#[tauri::command]
 async fn pause_download(state: tauri::State<'_, TauriState>, id: u32) -> Result<(), String> {
     tokio::time::sleep(Duration::from_millis(100)).await;
     let vec_res = state.downloads.try_lock();
@@ -161,10 +177,7 @@ async fn push_download(download: &Arc<Mutex<DownloadStatus>>, handle: AppHandle)
 fn remove_finished_downloads(handle: AppHandle) {
     tokio::spawn(async move {
         let state: tauri::State<TauriState> = handle.state();
-        let mut vec = state
-            .downloads
-            .lock()
-            .await;
+        let mut vec = state.downloads.lock().await;
         vec.retain(|e| !e.try_lock().unwrap().is_finished());
     });
 }
@@ -190,14 +203,19 @@ fn main() {
                         .app_data(Data::new(AppState { handle: h.clone() }))
                 })
                 .bind(("localhost", 4000))?
-                .run()
+                .run(),
             );
             Ok(())
         })
         .manage(TauriState {
             downloads: Arc::new(Mutex::new(Vec::<Arc<Mutex<DownloadStatus>>>::new())),
         })
-        .invoke_handler(tauri::generate_handler![pause_download, resume, download])
+        .invoke_handler(tauri::generate_handler![
+            pause_download,
+            resume,
+            download,
+            get_download_info
+        ])
         .run(tauri::generate_context!())
         .expect("Error while running tauri application");
 }

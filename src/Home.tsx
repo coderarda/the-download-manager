@@ -148,9 +148,11 @@ export function Home() {
                         fullWidth
                         onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
                             if (currDownload != null) {
-                                const filename = e.target.value.split("/").pop() as string;
-                                // TODO: Retrieve Download Info by making a request to url in Rust backend
-                                // setCurrDownload({ id: 0, filesize: 100, url: e.target.value, title: filename });
+                                // TODO: A request to backend (invoke) here.
+                                (async () => {
+                                    const obj: DownloadObj = await invoke("get_download_info", { url: e.target.value });
+                                    setCurrDownload(obj);
+                                })();
                             }
                         }}
                     />
