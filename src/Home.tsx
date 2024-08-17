@@ -33,7 +33,7 @@ const style = {
 
 export function Home() {
     const stored = sessionStorage.getItem("items");
-    const [currDownload, setCurrDownload] = useState<DownloadObj>();
+    const [currURL, setCurrURL] = useState<string>();
     const [downloads, setDownloads] = useState<DownloadObj[]>(
         stored != null ? (JSON.parse(stored) as DownloadObj[]) : [],
     );
@@ -47,7 +47,7 @@ export function Home() {
                 }
             });
             if (!exists) {
-                setCurrDownload(data);
+                setCurrURL(data.url);
                 setOpenAutoAddLink(true);
             }
             sessionStorage.setItem("items", JSON.stringify(downloads));
@@ -82,10 +82,10 @@ export function Home() {
                         size="small"
                         margin="normal"
                         fullWidth
-                        value={currDownload?.url}
+                        value={currURL}
                         onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                            if (currDownload != null)
-                                setCurrDownload({ ...currDownload, url: e.target.value });
+                            if (currURL != null)
+                                setCurrURL(e.target.value);
                         }}
                     />
                     <TextField
@@ -93,10 +93,10 @@ export function Home() {
                         size="small"
                         margin="normal"
                         fullWidth
-                        value={currDownload?.title}
+                        value={currURL}
                         onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                            if (currDownload != null)
-                                setCurrDownload({ ...currDownload, title: e.target.value });
+                            if (currURL != null)
+                                setCurrURL(e.target.value);
                         }}
                     />
                     <Box flexDirection={"row"} paddingTop={2}>
@@ -106,9 +106,12 @@ export function Home() {
                             color="primary"
                             onClick={() => {
                                 setOpenAutoAddLink(false);
-                                if (currDownload != null) {
-                                    setDownloads([...downloads, currDownload]);
-                                    invoke("download", { download: currDownload });
+                                if (currURL != null) {
+                                    (async () => {
+                                        const obj: DownloadObj = await invoke("get_download_info", { url: currURL });
+                                        setDownloads([...downloads, obj]);
+                                        invoke("download", { download: currURL });
+                                    })()
                                 }
                             }}
                         >
@@ -147,12 +150,8 @@ export function Home() {
                         margin="normal"
                         fullWidth
                         onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                            if (currDownload != null) {
-                                // TODO: A request to backend (invoke) here.
-                                (async () => {
-                                    const obj: DownloadObj = await invoke("get_download_info", { url: e.target.value });
-                                    setCurrDownload(obj);
-                                })();
+                            if (currURL != null) {
+                                setCurrURL(e.target.value);
                             }
                         }}
                     />
@@ -163,12 +162,13 @@ export function Home() {
                             color="primary"
                             onClick={() => {
                                 setOpenAddLink(false);
-                                console.log("URL entered!");
-                                console.log(currDownload);
-                                if (currDownload != null) {
-                                    setDownloads([...downloads, currDownload]);
-                                    console.log(`Download of filename ${currDownload.title} started!`);
-                                    invoke("download", { download: currDownload });
+                                if (currURL != null) {
+                                    (async () => {
+                                        const obj: DownloadObj = await invoke("get_download_info", { url: currURL });
+                                        setDownloads([...downloads, obj]);
+                                        console.log(`Download of filename ${obj.title} started!`);
+                                        invoke("download", { download: currURL });
+                                    })()
                                 }
                             }}
                         >
