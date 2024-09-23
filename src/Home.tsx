@@ -84,8 +84,7 @@ export function Home() {
                         fullWidth
                         value={currURL}
                         onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                            if (currURL != null)
-                                setCurrURL(e.target.value);
+                            setCurrURL(e.target.value);
                         }}
                     />
                     <TextField
@@ -95,8 +94,8 @@ export function Home() {
                         fullWidth
                         value={currURL}
                         onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                            if (currURL != null)
-                                setCurrURL(e.target.value);
+                            // TODO: Filename is being assigned into current URL???
+                            // setFilename(e.target.value);
                         }}
                     />
                     <Box flexDirection={"row"} paddingTop={2}>
@@ -109,8 +108,9 @@ export function Home() {
                                 if (currURL != null) {
                                     (async () => {
                                         const obj: DownloadObj = await invoke("get_download_info", { url: currURL });
+                                        console.log("Download info function invoked!");
                                         setDownloads([...downloads, obj]);
-                                        invoke("download", { download: currURL });
+                                        invoke("download", { download: obj });
                                     })()
                                 }
                             }}
@@ -149,10 +149,9 @@ export function Home() {
                         size="small"
                         margin="normal"
                         fullWidth
+                        value={currURL}
                         onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                            if (currURL != null) {
-                                setCurrURL(e.target.value);
-                            }
+                            setCurrURL(e.target.value);
                         }}
                     />
                     <Box flexDirection={"row"} paddingTop={2}>
@@ -162,12 +161,14 @@ export function Home() {
                             color="primary"
                             onClick={() => {
                                 setOpenAddLink(false);
+                                console.log("Link added!");
                                 if (currURL != null) {
                                     (async () => {
                                         const obj: DownloadObj = await invoke("get_download_info", { url: currURL });
+                                        console.log("Download info function invoked!");
                                         setDownloads([...downloads, obj]);
                                         console.log(`Download of filename ${obj.title} started!`);
-                                        invoke("download", { download: currURL });
+                                        invoke("download", { download: obj });
                                     })()
                                 }
                             }}

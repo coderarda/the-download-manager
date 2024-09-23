@@ -26,7 +26,6 @@ export function Download({ val }: { val: DownloadObj }) {
             <TableCell>{(val.filesize / (1024 * 1024)).toFixed()} MB</TableCell>
             <TableCell>% {((percentage / val.filesize) * 100).toFixed()}</TableCell>
             <TableCell>
-                {/* TODO: Convert the buttons to one button changing according to pause/resume status */}
                 <Box flexDirection="row" display="flex">
                     <Button
                         startIcon={isPaused ? <PlayArrow /> : <Pause />}

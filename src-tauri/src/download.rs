@@ -8,6 +8,17 @@ pub struct DownloadObj {
     filesize: u64,
 }
 
+impl DownloadObj {
+    pub fn new(id: u32, url: String, title: String, filesize: u64) -> Self {
+        DownloadObj {
+            id,
+            url,
+            title,
+            filesize
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct DownloadStatus {
     item: DownloadObj,

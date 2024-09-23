@@ -7,7 +7,7 @@ use actix_web::{
     App, HttpResponse, HttpServer, Responder,
 };
 use futures_util::StreamExt;
-use reqwest::header::RANGE;
+use reqwest::header::{CONTENT_LENGTH, RANGE};
 use std::{fs::File, io::Write, sync::Arc, time::Duration};
 use tauri::{AppHandle, Manager};
 use tokio::sync::Mutex;
@@ -24,13 +24,15 @@ struct AppState {
 }
 
 #[tauri::command]
-async fn get_download_info(url: String) -> Result<Option<DownloadObj>, String> {
+async fn get_download_info(url: String) -> Result<DownloadObj, String> {
     let client = reqwest::Client::new();
-    let res = client.head(url).send().await;
+    let res = client.head(url.clone()).send().await;
     match res {
         Ok(result) => {
-            let obj: DownloadObj = result.json().await.unwrap();
-            return Ok(Some(obj))
+            let head = result.headers();
+            let len: u64 = head.get(CONTENT_LENGTH).unwrap().to_str().unwrap().parse().unwrap();
+            let filename = url.split("/").last().unwrap().to_string();
+            return Ok(DownloadObj::new(0, url, filename, len))
         }
         Err(e) => {
             println!("reqwest Error!, {e}");
