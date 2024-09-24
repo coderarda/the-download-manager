@@ -8,7 +8,7 @@ use actix_web::{
 };
 use futures_util::StreamExt;
 use reqwest::header::{CONTENT_LENGTH, RANGE};
-use std::{fs::File, io::Write, sync::Arc, time::Duration};
+use std::{cmp::Ordering, fs::File, io::Write, sync::Arc, time::Duration};
 use tauri::{AppHandle, Manager};
 use tokio::sync::Mutex;
 mod download;
@@ -109,11 +109,11 @@ async fn download_url(
         .send()
         .await?;
     tokio::spawn(async move {
-        let file: Option<File>;
+        let mut file: Option<File> = None;
         let dir = tauri::api::path::download_dir()
             .unwrap()
             .join(status_obj.lock().await.get_item().get_file_name());
-        if dir.as_path().exists() && status_obj.lock().await.get_size() < size {
+        /* if dir.as_path().exists() && status_obj.lock().await.get_size() < size {
             file = Some(
                 std::fs::OpenOptions::new()
                     .append(true)
@@ -126,6 +126,26 @@ async fn download_url(
             file = Some(std::fs::File::create(dir.as_path()).unwrap());
         } else {
             file = Some(std::fs::File::create(dir.as_path()).unwrap());
+        } */
+        if dir.as_path().exists() {
+            match status_obj.lock().await.get_size().cmp(&size) {
+                Ordering::Less => {
+                    file = Some(
+                        std::fs::OpenOptions::new()
+                            .append(true)
+                            .write(true)
+                            .open(dir.as_path())
+                            .unwrap(),
+                    );
+                },
+                Ordering::Equal => {
+                    status_obj.lock().await.get_item().concat_number();
+                    file = Some(std::fs::File::create(dir.as_path()).unwrap());
+                },
+                Ordering::Greater => {
+                    println!("File alreeady exists!");
+                }
+            }
         }
         let mut stream = res.bytes_stream();
         let mut new_size = status_obj.lock().await.get_size();
@@ -133,11 +153,17 @@ async fn download_url(
             new_size += b.as_ref().unwrap().len() as u64;
             let update = serde_json::to_string(&DownloadInfo::new(id, new_size)).unwrap();
             h.emit_all("ondownloadupdate", update).unwrap();
-            file.as_ref().unwrap().write_all(&b.unwrap()).unwrap();
-            status_obj.lock().await.set_curr_size(new_size);
-            if status_obj.lock().await.is_paused() {
-                drop(file);
-                return Err::<(), u32>(status_obj.lock().await.get_item().get_id());
+            match file.as_mut() {
+                Some(f) => {
+                    f.write_all(&b.unwrap()).unwrap();
+                    status_obj.lock().await.set_curr_size(new_size);
+                    if status_obj.lock().await.is_paused() {
+                        return Err::<(), u32>(status_obj.lock().await.get_item().get_id());
+                    }
+                },
+                None => {
+                    println!("File not open!");
+                }
             }
         }
         let curr = status_obj.lock().await.get_size();
