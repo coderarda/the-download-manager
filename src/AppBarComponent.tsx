@@ -3,7 +3,7 @@ import { AppBar, IconButton, Toolbar, Typography } from "@mui/material";
 import React, { useEffect, useState } from "react";
 import { Link, LinkProps, useLocation } from "react-router-dom";
 
-export function AppBarComponent() {
+export default function AppBarComponent() {
     const loc = useLocation();
     const [title, setTitle] = useState("");
     const LinkBehavior = React.forwardRef<HTMLAnchorElement, Omit<LinkProps, "to"> & { href: LinkProps['to'] }>((props, ref) => (

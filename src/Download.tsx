@@ -1,10 +1,10 @@
 import { Pause, PlayArrow } from "@mui/icons-material";
 import { Box, Button, TableCell, TableRow } from "@mui/material";
 import { listen } from "@tauri-apps/api/event";
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api";
 
-export function Download({ val }: { val: DownloadObj }) {
+export default function Download({ val }: { val: DownloadObj }) {
     const [percentage, setPercentage] = useState<number>(0);
     const [isPaused, setIsPaused] = useState<boolean>(false);
     useEffect(() => {

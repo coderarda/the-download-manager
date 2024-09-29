@@ -17,7 +17,28 @@ impl DownloadObj {
             filesize
         }
     }
+
+    pub fn get_file_name(&self) -> &String {
+        &self.title
+    }
+
+    pub fn concat_number(&mut self) {
+        self.title.push_str("(1)");
+    }
+
+    pub fn get_id(&self) -> u32 {
+        self.id
+    }
+
+    pub fn get_url(&self) -> String {
+        self.url.clone()
+    }
+
+    pub fn get_total_size(&self) -> u64{
+        self.filesize
+    }
 }
+
 
 #[derive(Clone, Debug)]
 pub struct DownloadStatus {
@@ -82,27 +103,6 @@ impl DownloadStatus {
     }
 }
 
-impl DownloadObj {
-    pub fn get_file_name(&self) -> &String {
-        &self.title
-    }
-
-    pub fn concat_number(&mut self) {
-        self.title.push_str("(1)");
-    }
-
-    pub fn get_id(&self) -> u32 {
-        self.id
-    }
-
-    pub fn get_url(&self) -> String {
-        self.url.clone()
-    }
-
-    pub fn get_total_size(&self) -> u64{
-        self.filesize
-    }
-}
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct DownloadInfo {

@@ -8,9 +8,9 @@ import "@fontsource/roboto/700.css";
 import { createTheme, ThemeProvider } from "@mui/material/styles";
 import { CssBaseline } from "@mui/material";
 import { common, deepPurple } from "@mui/material/colors";
-import { Home } from "./Home";
-import { Settings } from "./Settings";
-import { AppBarComponent } from "./AppBarComponent";
+import Home from "./Home";
+import Settings from "./Settings";
+import AppBarComponent from "./AppBarComponent";
 
 const theme = createTheme({
     palette: {

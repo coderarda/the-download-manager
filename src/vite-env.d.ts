@@ -5,7 +5,7 @@ declare type DownloadObj = {
     url: string,
     title: string,
     filesize: number,
-};
+}
 
 declare type DownloadInfo = {
     id: number,
