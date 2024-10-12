@@ -22,7 +22,5 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
-*.lockb
-*.lock
-pnpm-lock.yaml
+
 *.code-workspace

@@ -113,20 +113,6 @@ async fn download_url(
         let dir = tauri::api::path::download_dir()
             .unwrap()
             .join(status_obj.lock().await.get_item().get_file_name());
-        /* if dir.as_path().exists() && status_obj.lock().await.get_size() < size {
-            file = Some(
-                std::fs::OpenOptions::new()
-                    .append(true)
-                    .write(true)
-                    .open(dir.as_path())
-                    .unwrap(),
-            );
-        } else if dir.as_path().exists() && status_obj.lock().await.get_size() == size {
-            status_obj.lock().await.get_item().concat_number();
-            file = Some(std::fs::File::create(dir.as_path()).unwrap());
-        } else {
-            file = Some(std::fs::File::create(dir.as_path()).unwrap());
-        } */
         if dir.as_path().exists() {
             match status_obj.lock().await.get_size().cmp(&size) {
                 Ordering::Less => {
@@ -143,7 +129,7 @@ async fn download_url(
                     file = Some(std::fs::File::create(dir.as_path()).unwrap());
                 },
                 Ordering::Greater => {
-                    println!("File alreeady exists!");
+                    println!("File already exists!");
                 }
             }
         }
@@ -153,8 +139,8 @@ async fn download_url(
             new_size += b.as_ref().unwrap().len() as u64;
             let update = serde_json::to_string(&DownloadInfo::new(id, new_size)).unwrap();
             h.emit_all("ondownloadupdate", update).unwrap();
-            match file.as_mut() {
-                Some(f) => {
+            match file {
+                Some(ref mut f) => {
                     f.write_all(&b.unwrap()).unwrap();
                     status_obj.lock().await.set_curr_size(new_size);
                     if status_obj.lock().await.is_paused() {
