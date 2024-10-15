@@ -34,7 +34,12 @@ const style = {
 
 export function Home() {
     const stored = sessionStorage.getItem("items");
+    const [openDial, setOpenDial] = useState(false);
+    const [openAddLink, setOpenAddLink] = useState(false);
+    const [openAutoAddLink, setOpenAutoAddLink] = useState(false);
     const [currURL, setCurrURL] = useState<string>();
+    const [manualDownloadModalVisibility, setManualDownloadModalVisibility] = useState(false);
+    const [filename, setFilename] = useState<string>("");
     const [downloads, setDownloads] = useState<DownloadObj[]>(
         stored != null ? (JSON.parse(stored) as DownloadObj[]) : [],
     );
@@ -57,9 +62,6 @@ export function Home() {
             unlisten.then((f) => f()).catch((err) => console.log(err));
         };
     }, []);
-    const [openDial, setOpenDial] = useState(false);
-    const [openAddLink, setOpenAddLink] = useState(false);
-    const [openAutoAddLink, setOpenAutoAddLink] = useState(false);
     const navigate = useNavigate();
     return (
         <>
@@ -93,7 +95,7 @@ export function Home() {
                         size="small"
                         margin="normal"
                         fullWidth
-                        value={currURL}
+                        value={filename}
                         onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
                             // TODO: Filename is being assigned into current URL???
                             setFilename(e.target.value);
@@ -168,6 +170,7 @@ export function Home() {
                                         const obj: DownloadObj = await invoke("get_download_info", { url: currURL });
                                         console.log("Download info function invoked!");
                                         setDownloads([...downloads, obj]);
+                                        setFilename(obj.title);
                                         console.log(`Download of filename ${obj.title} started!`);
                                         invoke("download", { download: obj });
                                     })()
