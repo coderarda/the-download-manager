@@ -15,7 +15,7 @@ import {
 } from "@mui/material";
 import { listen } from "@tauri-apps/api/event";
 import React, { useState, useEffect } from "react";
-import Download from "./Download";
+import { Download } from "./Download";
 import { Add, Settings } from "@mui/icons-material";
 import { useNavigate } from "react-router-dom";
 import { invoke } from "@tauri-apps/api";
@@ -31,17 +31,12 @@ const style = {
     p: 4,
 };
 
-export default function Home() {
+export function Home() {
     const stored = sessionStorage.getItem("items");
-    const [currURL, setCurrURL] = useState<string>("");
+    const [currURL, setCurrURL] = useState<string>();
     const [downloads, setDownloads] = useState<DownloadObj[]>(
         stored != null ? (JSON.parse(stored) as DownloadObj[]) : [],
     );
-    const [openDial, setOpenDial] = useState(false);
-    const [openAddLink, setOpenAddLink] = useState(false);
-    const [openAutoAddLink, setOpenAutoAddLink] = useState(false);
-    const [filename, setFilename] = useState<string>("");
-    const [manualDownloadModalVisibility, setManualDownloadModalVisibility] = useState(false);
     useEffect(() => {
         const unlisten = listen("ondownload", (e) => {
             let exists = false;
@@ -61,6 +56,9 @@ export default function Home() {
             unlisten.then((f) => f()).catch((err) => console.log(err));
         };
     }, []);
+    const [openDial, setOpenDial] = useState(false);
+    const [openAddLink, setOpenAddLink] = useState(false);
+    const [openAutoAddLink, setOpenAutoAddLink] = useState(false);
     const navigate = useNavigate();
     return (
         <>
@@ -94,10 +92,10 @@ export default function Home() {
                         size="small"
                         margin="normal"
                         fullWidth
-                        value={filename}
+                        value={currURL}
                         onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
                             // TODO: Filename is being assigned into current URL???
-                            setFilename(e.target.value);
+                            // setFilename(e.target.value);
                         }}
                     />
                     <Box flexDirection={"row"} paddingTop={2}>
@@ -112,7 +110,6 @@ export default function Home() {
                                         const obj: DownloadObj = await invoke("get_download_info", { url: currURL });
                                         console.log("Download info function invoked!");
                                         setDownloads([...downloads, obj]);
-                                        console.log(`Download of filename ${obj.title} starting...`);
                                         invoke("download", { download: obj });
                                     })()
                                 }
@@ -170,13 +167,13 @@ export default function Home() {
                                         const obj: DownloadObj = await invoke("get_download_info", { url: currURL });
                                         console.log("Download info function invoked!");
                                         setDownloads([...downloads, obj]);
-                                        // Move the code below to other new modal mentioned in the code above.
+                                        console.log(`Download of filename ${obj.title} started!`);
                                         invoke("download", { download: obj });
                                     })()
                                 }
                             }}
                         >
-                            Check
+                            Download
                         </Button>
                         <Button
                             variant="contained"
