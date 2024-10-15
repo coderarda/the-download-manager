@@ -16,10 +16,9 @@ import {
 import { listen } from "@tauri-apps/api/event";
 import React, { useState, useEffect } from "react";
 import Download from "./Download";
-import { Add, Settings, LockClock } from "@mui/icons-material";
+import { Add, Settings } from "@mui/icons-material";
 import { useNavigate } from "react-router-dom";
 import { invoke } from "@tauri-apps/api";
-import ScheduleDownloadModal from "./ScheduleDownloadModal";
 
 const style = {
     position: "absolute" as "absolute",
@@ -97,6 +96,7 @@ export default function Home() {
                         fullWidth
                         value={filename}
                         onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                            // TODO: Filename is being assigned into current URL???
                             setFilename(e.target.value);
                         }}
                     />
@@ -170,6 +170,7 @@ export default function Home() {
                                         const obj: DownloadObj = await invoke("get_download_info", { url: currURL });
                                         console.log("Download info function invoked!");
                                         setDownloads([...downloads, obj]);
+                                        // Move the code below to other new modal mentioned in the code above.
                                         invoke("download", { download: obj });
                                     })()
                                 }
@@ -188,9 +189,6 @@ export default function Home() {
                         </Button>
                     </Box>
                     {/*TODO: Schedule download modal implementation here. */}
-                    <ScheduleDownloadModal 
-                        open={manualDownloadModalVisibility} 
-                        handleClose={() => setManualDownloadModalVisibility(false)} />
                 </Box>
             </Modal>
             <Table aria-label="Downloads Table">
@@ -220,7 +218,7 @@ export default function Home() {
             >
                 <SpeedDialAction
                     key={0}
-                    tooltipTitle="Download from URL"
+                    tooltipTitle="Add/Schedule Download"
                     tooltipOpen
                     icon={<Add />}
                     onClick={() => {
@@ -228,17 +226,8 @@ export default function Home() {
                         setOpenAddLink(true);
                     }}
                 />
-                <SpeedDialAction 
-                    key={1}
-                    tooltipTitle="Schedule Download"
-                    tooltipOpen
-                    icon={<LockClock />}
-                    onClick={() => {
-                        setOpenDial(false);
-                        setManualDownloadModalVisibility(true);
-                    }} />
                 <SpeedDialAction
-                    key={2}
+                    key={1}
                     tooltipTitle="Settings"
                     tooltipOpen
                     icon={<Settings />}
