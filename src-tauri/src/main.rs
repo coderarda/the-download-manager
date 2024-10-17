@@ -156,9 +156,7 @@ async fn download_url(
         if curr == size {
             status_obj.lock().await.set_finished();
             let s = handle.state::<TauriState>();
-            if s.downloads.lock().await.len() == 0 {
-                s.downloads.lock().await.pop();
-            } else {
+            if s.downloads.lock().await.len() != 0 {
                 s.downloads
                     .lock()
                     .await
