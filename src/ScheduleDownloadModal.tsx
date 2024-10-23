@@ -1,18 +1,18 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Modal, Box, TextField, Button, Typography } from '@mui/material';
 import { TimePicker } from '@mui/x-date-pickers';
 import { AdapterMoment } from '@mui/x-date-pickers/AdapterMoment';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import moment, { Moment } from 'moment';
 
-const ScheduleDownloadModal = ({ open, handleClose }: { open: boolean, handleClose: () => void }) => {
+const ScheduleDownloadModal = ({ open, handleClose }: { open: boolean, handleClose: () => any }) => {
     const time = moment();
     const [selectedTime, setSelectedTime] = useState<Moment>(time);
     const [link, setLink] = useState('');
 
     const handleTimeChange = (newTime: Moment | null) => {
         // Look up moment js and fix here
-        if (newTime) 
+        if (newTime)
             setSelectedTime(newTime);
     };
 
@@ -35,6 +35,7 @@ const ScheduleDownloadModal = ({ open, handleClose }: { open: boolean, handleClo
                 left: '50%',
                 transform: 'translate(-50%, -50%)',
                 width: 400,
+                zIndex: 2,
                 bgcolor: 'background.paper',
                 boxShadow: 24,
                 p: 4

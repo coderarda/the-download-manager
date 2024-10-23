@@ -16,13 +16,13 @@ import {
 import { listen } from "@tauri-apps/api/event";
 import React, { useState, useEffect } from "react";
 import Download from "./Download";
-import { Add, Settings, LockClock } from "@mui/icons-material";
+import { Add, Settings, Alarm } from "@mui/icons-material";
 import { useNavigate } from "react-router-dom";
 import { invoke } from "@tauri-apps/api";
 import ScheduleDownloadModal from "./ScheduleDownloadModal";
 
 const style = {
-    position: "absolute" as "absolute",
+    position: "absolute",
     top: "50%",
     left: "50%",
     transform: "translate(-50%, -50%)",
@@ -38,11 +38,13 @@ export function Home() {
     const [openAddLink, setOpenAddLink] = useState(false);
     const [openAutoAddLink, setOpenAutoAddLink] = useState(false);
     const [currURL, setCurrURL] = useState<string>();
-    const [manualDownloadModalVisibility, setManualDownloadModalVisibility] = useState(false);
+    const [scheduleDownloadModalVisibility, setScheduleDownloadModalVisibility] =
+        useState(false);
     const [filename, setFilename] = useState<string>("");
     const [downloads, setDownloads] = useState<DownloadObj[]>(
         stored != null ? (JSON.parse(stored) as DownloadObj[]) : [],
     );
+
     useEffect(() => {
         const unlisten = listen("ondownload", (e) => {
             let exists = false;
@@ -110,11 +112,13 @@ export function Home() {
                                 setOpenAutoAddLink(false);
                                 if (currURL != null) {
                                     (async () => {
-                                        const obj: DownloadObj = await invoke("get_download_info", { url: currURL });
+                                        const obj: DownloadObj = await invoke("get_download_info", {
+                                            url: currURL,
+                                        });
                                         console.log("Download info function invoked!");
                                         setDownloads([...downloads, obj]);
                                         invoke("download", { download: obj });
-                                    })()
+                                    })();
                                 }
                             }}
                         >
@@ -167,13 +171,15 @@ export function Home() {
                                 console.log("Link added!");
                                 if (currURL != null) {
                                     (async () => {
-                                        const obj: DownloadObj = await invoke("get_download_info", { url: currURL });
+                                        const obj: DownloadObj = await invoke("get_download_info", {
+                                            url: currURL,
+                                        });
                                         console.log("Download info function invoked!");
                                         setDownloads([...downloads, obj]);
                                         setFilename(obj.title);
                                         console.log(`Download of filename ${obj.title} started!`);
                                         invoke("download", { download: obj });
-                                    })()
+                                    })();
                                 }
                             }}
                         >
@@ -189,12 +195,14 @@ export function Home() {
                             Cancel
                         </Button>
                     </Box>
-                    {/*TODO: Schedule download modal implementation here. */}
-                    <ScheduleDownloadModal 
-                        open={manualDownloadModalVisibility} 
-                        handleClose={() => setManualDownloadModalVisibility(false)} />
                 </Box>
             </Modal>
+            <ScheduleDownloadModal
+                open={scheduleDownloadModalVisibility}
+                handleClose={() => {
+                    setScheduleDownloadModalVisibility(false);
+                }}
+            />
             <Table aria-label="Downloads Table">
                 <TableHead>
                     <TableRow>
@@ -230,15 +238,16 @@ export function Home() {
                         setOpenAddLink(true);
                     }}
                 />
-                <SpeedDialAction 
+                <SpeedDialAction
                     key={1}
                     tooltipTitle="Schedule Download"
                     tooltipOpen
-                    icon={<LockClock />}
+                    icon={<Alarm />}
                     onClick={() => {
                         setOpenDial(false);
-                        setManualDownloadModalVisibility(true);
-                    }} />
+                        setScheduleDownloadModalVisibility(true);
+                    }}
+                />
                 <SpeedDialAction
                     key={2}
                     tooltipTitle="Settings"
