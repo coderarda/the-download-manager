@@ -24,6 +24,14 @@ const ScheduleDownloadModal = ({ open, handleClose }: { open: boolean, handleClo
         // Handle form submission logic here
         console.log('Scheduled Time:', selectedTime);
         console.log('Download Link:', link);
+        const now = moment();
+        const delay = selectedTime.diff(now);
+        if (delay > 0) { // Check if this will be delay < 0 or delay > 0
+            setTimeout(() => {
+            // Call your function here
+            console.log('Time reached:', selectedTime);
+            }, delay);
+        }
         handleClose();
     };
 
