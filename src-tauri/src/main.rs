@@ -30,9 +30,15 @@ async fn get_download_info(url: String) -> Result<DownloadObj, String> {
     match res {
         Ok(result) => {
             let head = result.headers();
-            let len: u64 = head.get(CONTENT_LENGTH).unwrap().to_str().unwrap().parse().unwrap();
+            let len: u64 = head
+                .get(CONTENT_LENGTH)
+                .unwrap()
+                .to_str()
+                .unwrap()
+                .parse()
+                .unwrap();
             let filename = url.split("/").last().unwrap().to_string();
-            return Ok(DownloadObj::new(0, url, filename, len))
+            return Ok(DownloadObj::new(0, url, filename, len));
         }
         Err(e) => {
             println!("reqwest Error!, {e}");
@@ -44,18 +50,11 @@ async fn get_download_info(url: String) -> Result<DownloadObj, String> {
 #[tauri::command]
 async fn pause_download(state: tauri::State<'_, TauriState>, id: u32) -> Result<(), String> {
     tokio::time::sleep(Duration::from_millis(100)).await;
-    let vec_res = state.downloads.try_lock();
-    match vec_res {
-        Ok(mut vec) => {
-            for d in vec.iter_mut() {
-                if d.lock().await.get_item().get_id() == id {
-                    d.lock().await.set_pause();
-                    break;
-                }
-            }
-        }
-        Err(err) => {
-            println!("Error occured: {err}");
+    let mut vec_res = state.downloads.lock().await;
+    for d in vec_res.iter_mut() {
+        if d.lock().await.get_item().get_id() == id {
+            d.lock().await.set_pause();
+            break;
         }
     }
     Ok(())
@@ -109,28 +108,32 @@ async fn download_url(
         .send()
         .await?;
     tokio::spawn(async move {
-        let mut file: Option<File> = None;
-        let dir = tauri::api::path::download_dir()
+        let mut file: Option<File>;
+        let mut dir = tauri::api::path::download_dir()
             .unwrap()
             .join(status_obj.lock().await.get_item().get_file_name());
-        if dir.as_path().exists() {
-            match status_obj.lock().await.get_size().cmp(&size) {
-                Ordering::Less => {
+        println!("File Path: {:?}", dir);
+        match status_obj.lock().await.get_size().cmp(&size) {
+            Ordering::Less => {
+                if status_obj.lock().await.get_size() == 0 {
+                    file = Some(std::fs::File::create(dir.as_path()).unwrap());
+                } else {
                     file = Some(
                         std::fs::OpenOptions::new()
                             .append(true)
-                            .write(true)
                             .open(dir.as_path())
                             .unwrap(),
                     );
-                },
-                Ordering::Equal => {
-                    status_obj.lock().await.get_item().concat_number();
-                    file = Some(std::fs::File::create(dir.as_path()).unwrap());
-                },
-                Ordering::Greater => {
-                    println!("File already exists!");
                 }
+            }
+            Ordering::Equal => {
+                status_obj.lock().await.get_item().concat_number();
+                dir.pop();
+                dir.push(status_obj.lock().await.get_item().get_file_name());
+                file = Some(std::fs::File::create(dir.as_path()).unwrap());
+            }
+            Ordering::Greater => {
+                panic!("File already exists!");
             }
         }
         let mut stream = res.bytes_stream();
@@ -146,7 +149,7 @@ async fn download_url(
                     if status_obj.lock().await.is_paused() {
                         return Err::<(), u32>(status_obj.lock().await.get_item().get_id());
                     }
-                },
+                }
                 None => {
                     println!("File not open!");
                 }

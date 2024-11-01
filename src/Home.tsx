@@ -40,11 +40,11 @@ export function Home() {
     const [currURL, setCurrURL] = useState<string>();
     const [scheduleDownloadModalVisibility, setScheduleDownloadModalVisibility] =
         useState(false);
-    const [filename, setFilename] = useState<string>("");
+    const [filename, setFilename] = useState<string>();
     const [downloads, setDownloads] = useState<DownloadObj[]>(
         stored != null ? (JSON.parse(stored) as DownloadObj[]) : [],
     );
-
+    const [queuedDownload, setQueuedDownload] = useState<DownloadObj | null>(null);
     useEffect(() => {
         const unlisten = listen("ondownload", (e) => {
             let exists = false;
@@ -56,7 +56,9 @@ export function Home() {
             });
             if (!exists) {
                 setCurrURL(data.url);
+                setFilename(data.title);
                 setOpenAutoAddLink(true);
+                setQueuedDownload(data);
             }
             sessionStorage.setItem("items", JSON.stringify(downloads));
         });
@@ -110,15 +112,9 @@ export function Home() {
                             color="primary"
                             onClick={() => {
                                 setOpenAutoAddLink(false);
-                                if (currURL != null) {
-                                    (async () => {
-                                        const obj: DownloadObj = await invoke("get_download_info", {
-                                            url: currURL,
-                                        });
-                                        console.log("Download info function invoked!");
-                                        setDownloads([...downloads, obj]);
-                                        invoke("download", { download: obj });
-                                    })();
+                                if (queuedDownload) {
+                                    setDownloads([...downloads, queuedDownload]);
+                                    invoke("download", { download: queuedDownload });
                                 }
                             }}
                         >
