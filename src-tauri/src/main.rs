@@ -11,11 +11,10 @@ use reqwest::header::{CONTENT_LENGTH, RANGE};
 use std::{cmp::Ordering, fs::File, io::Write, sync::Arc, time::Duration};
 use tauri::{AppHandle, Manager};
 use tokio::sync::Mutex;
-mod download;
-use download::{DownloadInfo, DownloadObj, DownloadStatus};
 
-mod tauri_state;
-use tauri_state::TauriState;
+mod util;
+use util::download::{DownloadInfo, DownloadObj, DownloadStatus};
+use util::tauri_state::TauriState;
 // Learn more about Tauri commands at https://tauri.app/v1/guides/features/command
 
 #[derive(Clone)]
@@ -50,8 +49,7 @@ async fn get_download_info(url: String) -> Result<DownloadObj, String> {
 #[tauri::command]
 async fn pause_download(state: tauri::State<'_, TauriState>, id: u32) -> Result<(), String> {
     tokio::time::sleep(Duration::from_millis(100)).await;
-    let mut vec_res = state.downloads.lock().await;
-    for d in vec_res.iter_mut() {
+    for d in state.downloads.lock().await.iter_mut() {
         if d.lock().await.get_item().get_id() == id {
             d.lock().await.set_pause();
             break;
@@ -112,8 +110,7 @@ async fn download_url(
         let mut dir = tauri::api::path::download_dir()
             .unwrap()
             .join(status_obj.lock().await.get_item().get_file_name());
-        println!("File Path: {:?}", dir);
-        match status_obj.lock().await.get_size().cmp(&size) {
+        match arg1.cmp(&size) {
             Ordering::Less => {
                 if status_obj.lock().await.get_size() == 0 {
                     file = Some(std::fs::File::create(dir.as_path()).unwrap());
@@ -133,7 +130,9 @@ async fn download_url(
                 file = Some(std::fs::File::create(dir.as_path()).unwrap());
             }
             Ordering::Greater => {
-                panic!("File already exists!");
+                println!("Anomaly occured! Canceling...");
+                // Send event to frontend to delete file and try again
+                return Err(999);
             }
         }
         let mut stream = res.bytes_stream();
@@ -141,6 +140,7 @@ async fn download_url(
         while let Some(b) = stream.next().await {
             new_size += b.as_ref().unwrap().len() as u64;
             let update = serde_json::to_string(&DownloadInfo::new(id, new_size)).unwrap();
+            println!("{}", update);
             h.emit_all("ondownloadupdate", update).unwrap();
             match file {
                 Some(ref mut f) => {
