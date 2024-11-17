@@ -74,6 +74,7 @@ impl DownloadStatus {
         self.finished = true;
         self.resume = false; 
         self.paused = false;
+        self.downloading = false;
     }
 
     pub fn is_finished(&self) -> bool {
@@ -97,7 +98,7 @@ impl DownloadStatus {
         self.item = item
     }
 
-    pub fn get_size(&self) -> u64 {
+    pub fn get_curr_size(&self) -> u64 {
         self.curr_size
     }
 }

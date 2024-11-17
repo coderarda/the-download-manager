@@ -97,7 +97,7 @@ async fn download_url(
     let h = handle.clone();
     let id = status_obj.lock().await.get_item().get_id();
     status_obj.lock().await.set_downloading();
-    let arg1 = status_obj.lock().await.get_size();
+    let arg1 = status_obj.lock().await.get_curr_size();
     let size = status_obj.lock().await.get_item().get_total_size();
     let client = reqwest::Client::new();
     let res = client
@@ -112,7 +112,7 @@ async fn download_url(
             .join(status_obj.lock().await.get_item().get_file_name());
         match arg1.cmp(&size) {
             Ordering::Less => {
-                if status_obj.lock().await.get_size() == 0 {
+                if status_obj.lock().await.get_curr_size() == 0 {
                     file = Some(std::fs::File::create(dir.as_path()).unwrap());
                 } else {
                     file = Some(
@@ -130,32 +130,31 @@ async fn download_url(
                 file = Some(std::fs::File::create(dir.as_path()).unwrap());
             }
             Ordering::Greater => {
-                println!("Anomaly occured! Canceling...");
+                panic!("Anomaly occured! Canceling...");
                 // Send event to frontend to delete file and try again
-                return Err(999);
             }
         }
         let mut stream = res.bytes_stream();
-        let mut new_size = status_obj.lock().await.get_size();
+        let mut new_size = status_obj.lock().await.get_curr_size();
         while let Some(b) = stream.next().await {
-            new_size += b.as_ref().unwrap().len() as u64;
-            let update = serde_json::to_string(&DownloadInfo::new(id, new_size)).unwrap();
-            println!("{}", update);
-            h.emit_all("ondownloadupdate", update).unwrap();
+            if status_obj.lock().await.is_paused() {
+                return Err::<(), u32>(status_obj.lock().await.get_item().get_id());
+            }
             match file {
                 Some(ref mut f) => {
+                    new_size += b.as_ref().unwrap().len() as u64;
+                    let update = serde_json::to_string(&DownloadInfo::new(id, new_size)).unwrap();
+                    println!("{}", update);
+                    h.emit_all("ondownloadupdate", update).unwrap();
                     f.write_all(&b.unwrap()).unwrap();
                     status_obj.lock().await.set_curr_size(new_size);
-                    if status_obj.lock().await.is_paused() {
-                        return Err::<(), u32>(status_obj.lock().await.get_item().get_id());
-                    }
                 }
                 None => {
                     println!("File not open!");
                 }
             }
         }
-        let curr = status_obj.lock().await.get_size();
+        let curr = status_obj.lock().await.get_curr_size();
         if curr == size {
             status_obj.lock().await.set_finished();
             let s = handle.state::<TauriState>();
