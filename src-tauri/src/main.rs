@@ -89,6 +89,8 @@ async fn download(
     Ok(())
 }
 
+
+// Change this function to download_url_with_pause and add another function without pause capabilities.
 async fn download_url(
     status_obj: Arc<Mutex<DownloadStatus>>,
     handle: tauri::AppHandle,
@@ -105,52 +107,70 @@ async fn download_url(
         .header(RANGE, format!("bytes={arg1}-{size}"))
         .send()
         .await?;
+
+    // Check if the server accepts range requests
     tokio::spawn(async move {
         let mut file: Option<File>;
         let mut dir = tauri::api::path::download_dir()
             .unwrap()
             .join(status_obj.lock().await.get_item().get_file_name());
-        match arg1.cmp(&size) {
-            Ordering::Less => {
-                if status_obj.lock().await.get_curr_size() == 0 {
+        if res
+            .headers()
+            .get("accept-ranges")
+            .map_or(false, |v| v == "bytes")
+        {
+            match arg1.cmp(&size) {
+                Ordering::Less => {
+                    if status_obj.lock().await.get_curr_size() == 0 {
+                        file = Some(std::fs::File::create(dir.as_path()).unwrap());
+                    } else {
+                        file = Some(
+                            std::fs::OpenOptions::new()
+                                .append(true)
+                                .open(dir.as_path())
+                                .unwrap(),
+                        );
+                    }
+                }
+                Ordering::Equal => {
+                    status_obj.lock().await.get_item().concat_number();
+                    dir.pop();
+                    dir.push(status_obj.lock().await.get_item().get_file_name());
                     file = Some(std::fs::File::create(dir.as_path()).unwrap());
-                } else {
-                    file = Some(
-                        std::fs::OpenOptions::new()
-                            .append(true)
-                            .open(dir.as_path())
-                            .unwrap(),
-                    );
+                }
+                Ordering::Greater => {
+                    panic!("Anomaly occurred! Canceling...");
+                    // Send event to frontend to delete file and try again
                 }
             }
-            Ordering::Equal => {
-                status_obj.lock().await.get_item().concat_number();
-                dir.pop();
-                dir.push(status_obj.lock().await.get_item().get_file_name());
-                file = Some(std::fs::File::create(dir.as_path()).unwrap());
-            }
-            Ordering::Greater => {
-                panic!("Anomaly occured! Canceling...");
-                // Send event to frontend to delete file and try again
-            }
-        }
-        let mut stream = res.bytes_stream();
-        let mut new_size = status_obj.lock().await.get_curr_size();
-        while let Some(b) = stream.next().await {
-            if status_obj.lock().await.is_paused() {
-                return Err::<(), u32>(status_obj.lock().await.get_item().get_id());
-            }
-            match file {
-                Some(ref mut f) => {
-                    new_size += b.as_ref().unwrap().len() as u64;
-                    let update = serde_json::to_string(&DownloadInfo::new(id, new_size)).unwrap();
-                    println!("{}", update);
-                    h.emit_all("ondownloadupdate", update).unwrap();
-                    f.write_all(&b.unwrap()).unwrap();
-                    status_obj.lock().await.set_curr_size(new_size);
+
+            let mut stream = res.bytes_stream();
+            let mut new_size = status_obj.lock().await.get_curr_size();
+            while let Some(b) = stream.next().await {
+                if status_obj.lock().await.is_paused() {
+                    return Err::<(), u32>(status_obj.lock().await.get_item().get_id());
                 }
-                None => {
-                    println!("File not open!");
+                match b {
+                    Ok(chunk) => {
+                        new_size += chunk.len() as u64;
+                        let update =
+                            serde_json::to_string(&DownloadInfo::new(id, new_size)).unwrap();
+                        println!("{}", update);
+                        h.emit_all("ondownloadupdate", update).unwrap();
+                        match file {
+                            Some(ref mut f) => {
+                                f.write_all(&chunk).unwrap();
+                                status_obj.lock().await.set_curr_size(new_size);
+                            }
+                            None => {
+                                println!("File not open!");
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        println!("Error reading stream: {:?}", e);
+                        return Err::<(), u32>(status_obj.lock().await.get_item().get_id());
+                    }
                 }
             }
         }
@@ -164,16 +184,15 @@ async fn download_url(
                     .await
                     .remove(status_obj.lock().await.get_item().get_id() as usize);
             }
-            drop(file);
-            println!("Download Finished!");
         }
-        Ok::<(), u32>(())
+        Ok(())
     })
     .await
-    .expect("Join Error occured!")
-    .unwrap_or_else(|download_id| {
-        println!("Download with id {download_id} paused!");
+    .unwrap()
+    .unwrap_or_else(|e| {
+        println!("Download with id {e} has been paused.");
     });
+
     Ok(())
 }
 
