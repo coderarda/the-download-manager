@@ -14,11 +14,11 @@ use tokio::sync::Mutex;
 
 mod util;
 use util::download::{DownloadInfo, DownloadObj, DownloadStatus};
-use util::tauri_state::TauriState;
+use util::tauri_state::AppDownloadManager;
 // Learn more about Tauri commands at https://tauri.app/v1/guides/features/command
 
 #[derive(Clone)]
-struct AppState {
+struct WebServerState {
     handle: AppHandle,
 }
 
@@ -47,9 +47,9 @@ async fn get_download_info(url: String) -> Result<DownloadObj, String> {
 }
 
 #[tauri::command]
-async fn pause_download(state: tauri::State<'_, TauriState>, id: u32) -> Result<(), String> {
+async fn pause_download(state: tauri::State<'_, AppDownloadManager>, id: u32) -> Result<(), String> {
     tokio::time::sleep(Duration::from_millis(100)).await;
-    for d in state.downloads.lock().await.iter_mut() {
+    for d in state.get_downloads().lock().await.iter_mut() {
         if d.lock().await.get_item().get_id() == id {
             d.lock().await.set_pause();
             break;
@@ -60,11 +60,11 @@ async fn pause_download(state: tauri::State<'_, TauriState>, id: u32) -> Result<
 
 #[tauri::command]
 async fn resume(
-    state: tauri::State<'_, TauriState>,
+    state: tauri::State<'_, AppDownloadManager>,
     handle: tauri::AppHandle,
     id: u32,
 ) -> Result<(), String> {
-    for d in state.downloads.lock().await.iter_mut() {
+    for d in state.get_downloads().lock().await.iter_mut() {
         if d.lock().await.get_item().get_id() == id {
             tokio::spawn(download_url(d.clone(), handle.clone()));
             break;
@@ -75,11 +75,11 @@ async fn resume(
 
 #[tauri::command]
 async fn download(
-    state: tauri::State<'_, TauriState>,
+    state: tauri::State<'_, AppDownloadManager>,
     handle: AppHandle,
     download: DownloadObj,
 ) -> Result<(), String> {
-    for d in state.downloads.lock().await.iter_mut() {
+    for d in state.get_downloads().lock().await.iter_mut() {
         if d.lock().await.get_item().get_id() == download.get_id() {
             d.lock().await.set_item(download);
             tokio::spawn(download_url(d.clone(), handle.clone()));
@@ -177,9 +177,9 @@ async fn download_url(
         let curr = status_obj.lock().await.get_curr_size();
         if curr == size {
             status_obj.lock().await.set_finished();
-            let s = handle.state::<TauriState>();
-            if s.downloads.lock().await.len() != 0 {
-                s.downloads
+            let s = handle.state::<AppDownloadManager>();
+            if s.get_downloads().lock().await.len() != 0 {
+                s.get_downloads()
                     .lock()
                     .await
                     .remove(status_obj.lock().await.get_item().get_id() as usize);
@@ -197,8 +197,8 @@ async fn download_url(
 }
 
 async fn push_download(download: &Arc<Mutex<DownloadStatus>>, handle: AppHandle) {
-    let tauri_state: tauri::State<TauriState> = handle.state();
-    tauri_state.downloads.lock().await.push(download.clone());
+    let tauri_state: tauri::State<AppDownloadManager> = handle.state();
+    tauri_state.get_downloads().lock().await.push(download.clone());
     handle
         .emit_all(
             "ondownload",
@@ -209,14 +209,14 @@ async fn push_download(download: &Arc<Mutex<DownloadStatus>>, handle: AppHandle)
 
 fn remove_finished_downloads(handle: AppHandle) {
     tokio::spawn(async move {
-        let state: tauri::State<TauriState> = handle.state();
-        let mut vec = state.downloads.lock().await;
-        vec.retain(|e| !e.try_lock().unwrap().is_finished());
+        let state: tauri::State<AppDownloadManager> = handle.state();
+        let vec = state.get_downloads();
+        vec.lock().await.retain(|e| !e.try_lock().unwrap().is_finished());
     });
 }
 
 #[post("/")]
-async fn post_download(dw: String, data: web::Data<AppState>) -> std::io::Result<impl Responder> {
+async fn post_download(dw: String, data: web::Data<WebServerState>) -> std::io::Result<impl Responder> {
     let new_data = serde_json::from_str::<DownloadObj>(&dw).unwrap();
     // Get State
     let download = Arc::new(Mutex::new(DownloadStatus::new(new_data)));
@@ -233,16 +233,14 @@ fn main() {
                 HttpServer::new(move || {
                     App::new()
                         .service(post_download)
-                        .app_data(Data::new(AppState { handle: h.clone() }))
+                        .app_data(Data::new(WebServerState { handle: h.clone() }))
                 })
                 .bind(("localhost", 4000))?
                 .run(),
             );
             Ok(())
         })
-        .manage(TauriState {
-            downloads: Arc::new(Mutex::new(Vec::<Arc<Mutex<DownloadStatus>>>::new())),
-        })
+        .manage(AppDownloadManager::new(Arc::new(Mutex::new(Vec::<Arc<Mutex<DownloadStatus>>>::new()))))
         .invoke_handler(tauri::generate_handler![
             pause_download,
             resume,

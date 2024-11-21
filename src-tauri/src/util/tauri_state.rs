@@ -3,6 +3,18 @@ use tokio::sync::Mutex;
 
 use super::download::DownloadStatus;
 
-pub struct TauriState {
-    pub downloads: Arc<Mutex<Vec<Arc<Mutex<DownloadStatus>>>>>,
+pub struct AppDownloadManager {
+    downloads: Arc<Mutex<Vec<Arc<Mutex<DownloadStatus>>>>>,
+}
+
+impl AppDownloadManager {
+    pub fn new(downloads: Arc<Mutex<Vec<Arc<Mutex<DownloadStatus>>>>>) -> Self {
+        AppDownloadManager {
+            downloads
+        }
+    }
+
+    pub fn get_downloads(&self) -> Arc<Mutex<Vec<Arc<Mutex<DownloadStatus>>>>> {
+        self.downloads.clone()
+    }
 }
