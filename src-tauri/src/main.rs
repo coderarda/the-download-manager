@@ -92,18 +92,18 @@ async fn download(
 
 // Change this function to download_url_with_pause and add another function without pause capabilities.
 async fn download_url(
-    status_obj: Arc<Mutex<DownloadStatus>>,
+    status: Arc<Mutex<DownloadStatus>>,
     handle: tauri::AppHandle,
 ) -> Result<(), reqwest::Error> {
     println!("Download starting...");
     let h = handle.clone();
-    let id = status_obj.lock().await.get_item().get_id();
-    status_obj.lock().await.set_downloading();
-    let arg1 = status_obj.lock().await.get_curr_size();
-    let size = status_obj.lock().await.get_item().get_total_size();
+    let id = status.lock().await.get_item().get_id();
+    status.lock().await.set_downloading();
+    let arg1 = status.lock().await.get_curr_size();
+    let size = status.lock().await.get_item().get_total_size();
     let client = reqwest::Client::new();
     let res = client
-        .get(status_obj.lock().await.get_item().get_url())
+        .get(status.lock().await.get_item().get_url())
         .header(RANGE, format!("bytes={arg1}-{size}"))
         .send()
         .await?;
@@ -113,7 +113,7 @@ async fn download_url(
         let mut file: Option<File>;
         let mut dir = tauri::api::path::download_dir()
             .unwrap()
-            .join(status_obj.lock().await.get_item().get_file_name());
+            .join(status.lock().await.get_item().get_file_name());
         if res
             .headers()
             .get("accept-ranges")
@@ -121,7 +121,7 @@ async fn download_url(
         {
             match arg1.cmp(&size) {
                 Ordering::Less => {
-                    if status_obj.lock().await.get_curr_size() == 0 {
+                    if status.lock().await.get_curr_size() == 0 {
                         file = Some(std::fs::File::create(dir.as_path()).unwrap());
                     } else {
                         file = Some(
@@ -133,9 +133,9 @@ async fn download_url(
                     }
                 }
                 Ordering::Equal => {
-                    status_obj.lock().await.get_item().concat_number();
+                    status.lock().await.get_item().concat_number();
                     dir.pop();
-                    dir.push(status_obj.lock().await.get_item().get_file_name());
+                    dir.push(status.lock().await.get_item().get_file_name());
                     file = Some(std::fs::File::create(dir.as_path()).unwrap());
                 }
                 Ordering::Greater => {
@@ -145,10 +145,10 @@ async fn download_url(
             }
 
             let mut stream = res.bytes_stream();
-            let mut new_size = status_obj.lock().await.get_curr_size();
+            let mut new_size = status.lock().await.get_curr_size();
             while let Some(b) = stream.next().await {
-                if status_obj.lock().await.is_paused() {
-                    return Err::<(), u32>(status_obj.lock().await.get_item().get_id());
+                if status.lock().await.is_paused() {
+                    return Err::<(), u32>(status.lock().await.get_item().get_id());
                 }
                 match b {
                     Ok(chunk) => {
@@ -160,7 +160,7 @@ async fn download_url(
                         match file {
                             Some(ref mut f) => {
                                 f.write_all(&chunk).unwrap();
-                                status_obj.lock().await.set_curr_size(new_size);
+                                status.lock().await.set_curr_size(new_size);
                             }
                             None => {
                                 println!("File not open!");
@@ -169,20 +169,20 @@ async fn download_url(
                     }
                     Err(e) => {
                         println!("Error reading stream: {:?}", e);
-                        return Err::<(), u32>(status_obj.lock().await.get_item().get_id());
+                        return Err::<(), u32>(status.lock().await.get_item().get_id());
                     }
                 }
             }
         }
-        let curr = status_obj.lock().await.get_curr_size();
+        let curr = status.lock().await.get_curr_size();
         if curr == size {
-            status_obj.lock().await.set_finished();
+            status.lock().await.set_finished();
             let s = handle.state::<AppDownloadManager>();
             if s.get_downloads().lock().await.len() != 0 {
                 s.get_downloads()
                     .lock()
                     .await
-                    .remove(status_obj.lock().await.get_item().get_id() as usize);
+                    .remove(status.lock().await.get_item().get_id() as usize);
             }
         }
         Ok(())
@@ -196,7 +196,7 @@ async fn download_url(
     Ok(())
 }
 
-async fn push_download(download: &Arc<Mutex<DownloadStatus>>, handle: AppHandle) {
+async fn push_download_to_vec(download: &Arc<Mutex<DownloadStatus>>, handle: AppHandle) {
     let tauri_state: tauri::State<AppDownloadManager> = handle.state();
     tauri_state.get_downloads().lock().await.push(download.clone());
     handle
@@ -216,11 +216,11 @@ fn remove_finished_downloads(handle: AppHandle) {
 }
 
 #[post("/")]
-async fn post_download(dw: String, data: web::Data<WebServerState>) -> std::io::Result<impl Responder> {
+async fn listen_for_downloads(dw: String, data: web::Data<WebServerState>) -> std::io::Result<impl Responder> {
     let new_data = serde_json::from_str::<DownloadObj>(&dw).unwrap();
     // Get State
     let download = Arc::new(Mutex::new(DownloadStatus::new(new_data)));
-    push_download(&download, data.handle.clone()).await;
+    push_download_to_vec(&download, data.handle.clone()).await;
     remove_finished_downloads(data.handle.clone());
     Ok(HttpResponse::Ok())
 }
@@ -232,7 +232,7 @@ fn main() {
             tauri::async_runtime::spawn(
                 HttpServer::new(move || {
                     App::new()
-                        .service(post_download)
+                        .service(listen_for_downloads)
                         .app_data(Data::new(WebServerState { handle: h.clone() }))
                 })
                 .bind(("localhost", 4000))?
