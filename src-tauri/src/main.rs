@@ -47,7 +47,7 @@ async fn get_download_info(url: String) -> Result<DownloadObj, String> {
 }
 
 #[tauri::command]
-async fn pause_download(state: tauri::State<'_, AppDownloadManager>, id: u32) -> Result<(), String> {
+async fn pause_download(state: tauri::State<'_, AppDownloadManager>, id: u8) -> Result<(), String> {
     tokio::time::sleep(Duration::from_millis(100)).await;
     for d in state.get_downloads().lock().await.iter_mut() {
         if d.lock().await.get_item().get_id() == id {
@@ -62,11 +62,11 @@ async fn pause_download(state: tauri::State<'_, AppDownloadManager>, id: u32) ->
 async fn resume(
     state: tauri::State<'_, AppDownloadManager>,
     handle: tauri::AppHandle,
-    id: u32,
+    id: u8,
 ) -> Result<(), String> {
     for d in state.get_downloads().lock().await.iter_mut() {
         if d.lock().await.get_item().get_id() == id {
-            tokio::spawn(download_url(d.clone(), handle.clone()));
+            tokio::spawn(download_with_pause(d.clone(), handle.clone()));
             break;
         }
     }
@@ -82,7 +82,7 @@ async fn download(
     for d in state.get_downloads().lock().await.iter_mut() {
         if d.lock().await.get_item().get_id() == download.get_id() {
             d.lock().await.set_item(download);
-            tokio::spawn(download_url(d.clone(), handle.clone()));
+            tokio::spawn(download_with_pause(d.clone(), handle.clone()));
             break;
         }
     }
@@ -91,7 +91,7 @@ async fn download(
 
 
 // Change this function to download_url_with_pause and add another function without pause capabilities.
-async fn download_url(
+async fn download_with_pause(
     status: Arc<Mutex<DownloadStatus>>,
     handle: tauri::AppHandle,
 ) -> Result<(), reqwest::Error> {
@@ -148,7 +148,7 @@ async fn download_url(
             let mut new_size = status.lock().await.get_curr_size();
             while let Some(b) = stream.next().await {
                 if status.lock().await.is_paused() {
-                    return Err::<(), u32>(status.lock().await.get_item().get_id());
+                    return Err::<(), u8>(status.lock().await.get_item().get_id());
                 }
                 match b {
                     Ok(chunk) => {
@@ -169,7 +169,7 @@ async fn download_url(
                     }
                     Err(e) => {
                         println!("Error reading stream: {:?}", e);
-                        return Err::<(), u32>(status.lock().await.get_item().get_id());
+                        return Err::<(), u8>(status.lock().await.get_item().get_id());
                     }
                 }
             }

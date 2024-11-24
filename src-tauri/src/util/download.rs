@@ -2,14 +2,14 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct DownloadObj {
-    id: u32,
+    id: u8,
     url: String,
     title: String,
     filesize: u64,
 }
 
 impl DownloadObj {
-    pub fn new(id: u32, url: String, title: String, filesize: u64) -> Self {
+    pub fn new(id: u8, url: String, title: String, filesize: u64) -> Self {
         DownloadObj {
             id,
             url,
@@ -26,7 +26,7 @@ impl DownloadObj {
         self.title.push_str("(1)");
     }
 
-    pub fn get_id(&self) -> u32 {
+    pub fn get_id(&self) -> u8 {
         self.id
     }
 
@@ -101,12 +101,12 @@ impl DownloadStatus {
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct DownloadInfo {
-    id: u32,
+    id: u8,
     chunk_size: u64,
 }
 
 impl DownloadInfo {
-    pub fn new(id: u32, chunk_size: u64) -> Self {
+    pub fn new(id: u8, chunk_size: u64) -> Self {
         Self { id, chunk_size }
     }
 }
