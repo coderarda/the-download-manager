@@ -1,3 +1,5 @@
+use std::fmt::Display;
+
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
@@ -108,5 +110,11 @@ pub struct DownloadInfo {
 impl DownloadInfo {
     pub fn new(id: u8, chunk_size: u64) -> Self {
         Self { id, chunk_size }
+    }
+}
+
+impl Display for DownloadInfo {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "id: {}, chunk_size: {}", self.id, self.chunk_size)
     }
 }
