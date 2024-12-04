@@ -62,7 +62,14 @@ export function Home() {
             }
             sessionStorage.setItem("items", JSON.stringify(downloads));
         });
+        const unlisten2 = listen("ondownloadremove", (e) => {
+            const data = e.payload as number;
+            const newDownloads = downloads.filter((val) => val.id != data);
+            setDownloads(newDownloads);
+            sessionStorage.setItem("items", JSON.stringify(newDownloads));
+        });
         return () => {
+            unlisten2.then((f) => f()).catch((err) => console.log(err));
             unlisten.then((f) => f()).catch((err) => console.log(err));
         };
     }, []);

@@ -6,16 +6,26 @@ import { invoke } from "@tauri-apps/api";
 
 export default function Download({ val }: { val: DownloadObj }) {
     const [percentage, setPercentage] = useState<number>(0);
+    const [pausable, setPausable] = useState(true);
     const [isPaused, setIsPaused] = useState<boolean>(false);
     useEffect(() => {
+        const unlisten = listen("downloadpauseinfo", (e) => {
+            const data = e.payload as boolean;
+            if (data) {
+                setPausable(true);
+            } else {
+                setPausable(false);
+            }
+        });
         const f = listen("ondownloadupdate", (e) => {
-            const data = JSON.parse(e.payload as string) as DownloadInfo;
+            const data = e.payload as DownloadInfo;
             if (data.id == val.id) {
                 setPercentage(data.chunk_size);
             }
         });
         return () => {
             f.then((fun) => fun()).catch((err) => console.log(err));
+            unlisten.then((fun) => fun()).catch((err) => console.log(err));
         };
     }, []);
     return (
@@ -28,6 +38,7 @@ export default function Download({ val }: { val: DownloadObj }) {
             <TableCell>
                 <Box flexDirection="row" display="flex">
                     <Button
+                        disabled={!pausable}
                         startIcon={isPaused ? <PlayArrow /> : <Pause />}
                         size="small"
                         variant="contained"

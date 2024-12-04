@@ -11,22 +11,14 @@ pub struct DownloadObj {
 }
 
 impl DownloadObj {
-    pub fn new(id: u8, url: String, title: String, filesize: u64) -> Self {
-        DownloadObj {
-            id,
-            url,
-            title,
-            filesize
-        }
-    }
 
     pub fn get_file_name(&self) -> &String {
         &self.title
     }
 
-    pub fn concat_number(&mut self) {
+    /* pub fn concat_number(&mut self) {
         self.title.push_str("(1)");
-    }
+    } */
 
     pub fn get_id(&self) -> u8 {
         self.id
@@ -45,7 +37,6 @@ impl DownloadObj {
 pub struct DownloadStatus {
     item: DownloadObj,
     paused: bool,
-    finished: bool,
     downloading: bool,
     curr_size: u64,
 }
@@ -55,7 +46,6 @@ impl DownloadStatus {
         Self {
             item,
             paused: false,
-            finished: false,
             downloading: false,
             curr_size: 0,
         }
@@ -69,16 +59,6 @@ impl DownloadStatus {
         self.paused = true;
     }
 
-    pub fn set_finished(&mut self) {
-        self.finished = true;
-        self.paused = false;
-        self.downloading = false;
-    }
-
-    pub fn is_finished(&self) -> bool {
-        self.finished
-    }
-
     pub fn is_paused(&self) -> bool {
         self.paused
     }
@@ -90,10 +70,6 @@ impl DownloadStatus {
 
     pub fn get_item(&self) -> DownloadObj {
         self.item.clone()
-    }
-
-    pub fn set_item(&mut self, item: DownloadObj) {
-        self.item = item
     }
 
     pub fn get_curr_size(&self) -> u64 {

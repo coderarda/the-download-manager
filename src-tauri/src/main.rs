@@ -6,9 +6,13 @@ use actix_web::{
     web::{self, Data},
     App, HttpResponse, HttpServer, Responder,
 };
-use futures_util::StreamExt;
-use reqwest::header::{CONTENT_LENGTH, RANGE};
-use std::{cmp::Ordering, fs::File, io::Write, sync::Arc, time::Duration};
+use std::{
+    cmp::Ordering,
+    fs::File,
+    io::Write,
+    sync::Arc,
+    time::Duration,
+};
 use tauri::{AppHandle, Manager};
 use tokio::sync::Mutex;
 
@@ -20,30 +24,6 @@ use util::tauri_state::AppDownloadManager;
 #[derive(Clone)]
 struct WebServerState {
     handle: AppHandle,
-}
-
-#[tauri::command]
-async fn get_download_info(url: String) -> Result<DownloadObj, String> {
-    let client = reqwest::Client::new();
-    let res = client.head(url.clone()).send().await;
-    match res {
-        Ok(result) => {
-            let head = result.headers();
-            let len: u64 = head
-                .get(CONTENT_LENGTH)
-                .unwrap()
-                .to_str()
-                .unwrap()
-                .parse()
-                .unwrap();
-            let filename = url.split("/").last().unwrap().to_string();
-            return Ok(DownloadObj::new(0, url, filename, len));
-        }
-        Err(e) => {
-            println!("reqwest Error!, {e}");
-            Err(String::from("Error occured!"))
-        }
-    }
 }
 
 #[tauri::command]
@@ -64,7 +44,7 @@ async fn resume(
     handle: tauri::AppHandle,
     id: u8,
 ) -> Result<(), String> {
-    for d in state.get_downloads().lock().await.iter_mut() {
+    for d in state.get_downloads().lock().await.iter() {
         if d.lock().await.get_item().get_id() == id {
             tokio::spawn(download_with_pause(d.clone(), handle.clone()));
             break;
@@ -81,7 +61,6 @@ async fn download(
 ) -> Result<(), String> {
     for d in state.get_downloads().lock().await.iter_mut() {
         if d.lock().await.get_item().get_id() == download.get_id() {
-            d.lock().await.set_item(download);
             tokio::spawn(download_with_pause(d.clone(), handle.clone()));
             break;
         }
@@ -92,135 +71,83 @@ async fn download(
 async fn download_with_pause(
     status: Arc<Mutex<DownloadStatus>>,
     handle: tauri::AppHandle,
-) -> Result<(), reqwest::Error> {
+) -> Result<(), ureq::Error> {
     println!("Download starting...");
     let h = handle.clone();
     let id = status.lock().await.get_item().get_id();
     status.lock().await.set_downloading();
-    let arg1 = status.lock().await.get_curr_size();
-    let size = status.lock().await.get_item().get_total_size();
-    let client = reqwest::Client::new();
-    let res = client
-        .get(status.lock().await.get_item().get_url())
-        .header(RANGE, format!("bytes={arg1}-{size}"))
-        .send()
-        .await?;
+    let starting_sz = status.lock().await.get_curr_size();
+    let dir = tauri::api::path::download_dir()
+        .unwrap()
+        .join(status.lock().await.get_item().get_file_name());
+    let mut file: Option<File>;
+    match starting_sz.cmp(&0) {
+        Ordering::Greater => {
+            file = Some(
+                std::fs::OpenOptions::new()
+                    .append(true)
+                    .open(dir.as_path())
+                    .unwrap(),
+            );
+        }
+        Ordering::Less => {
+            panic!("Anomaly occurred! Canceling...");
+            // Send event to frontend to delete file and try again
+        }
+        Ordering::Equal => {
+            file = std::fs::File::create(dir.as_path()).ok();
+        }
+    }
+    let req = ureq::get(&status.lock().await.get_item().get_url())
+        .set("Range", &format!("bytes={starting_sz}-"))
+        .call()?;
 
-    // Check if the server accepts range requests
-    tokio::spawn(async move {
-        let mut file: Option<File>;
-        let mut dir = tauri::api::path::download_dir()
-            .unwrap()
-            .join(status.lock().await.get_item().get_file_name());
-        match arg1.cmp(&size) {
-            Ordering::Less => {
-                if status.lock().await.get_curr_size() == 0 {
-                    file = Some(std::fs::File::create(dir.as_path()).unwrap());
-                } else {
-                    file = Some(
-                        std::fs::OpenOptions::new()
-                            .append(true)
-                            .open(dir.as_path())
-                            .unwrap(),
-                    );
-                }
+    if req.header("accept-ranges").unwrap().contains("bytes") {
+        h.emit_all("downloadpauseinfo", true).unwrap();
+    } else {
+        h.emit_all("downloadpauseinfo", false).unwrap();
+    }
+    let mut curr_sz = starting_sz;
+    let buf: &mut [u8] = &mut [0; 1024];
+    let mut reader = req.into_reader();
+    while curr_sz < status.lock().await.get_item().get_total_size() {
+        if status.lock().await.is_paused() {
+            break;
+        }
+        let sz = reader.read(buf).unwrap();
+        let update = DownloadInfo::new(id, curr_sz);
+        h.emit_all("ondownloadupdate", update).unwrap();
+        match file {
+            Some(ref mut f) => {
+                f.write_all(buf).unwrap();
+                curr_sz += sz as u64;
+                status.lock().await.set_curr_size(curr_sz);
             }
-            Ordering::Equal => {
-                status.lock().await.get_item().concat_number();
-                dir.pop();
-                dir.push(status.lock().await.get_item().get_file_name());
-                file = Some(std::fs::File::create(dir.as_path()).unwrap());
-            }
-            Ordering::Greater => {
-                panic!("Anomaly occurred! Canceling...");
-                // Send event to frontend to delete file and try again
+            None => {
+                println!("File not open!");
             }
         }
-        if res
-            .headers()
-            .get("accept-ranges")
-            .map_or(false, |v| v == "bytes")
-        {
-
-            let mut stream = res.bytes_stream();
-            let mut new_size = status.lock().await.get_curr_size();
-            while let Some(b) = stream.next().await {
-                if status.lock().await.is_paused() {
-                    return Err::<(), u8>(status.lock().await.get_item().get_id());
-                }
-                match b {
-                    Ok(chunk) => {
-                        new_size += chunk.len() as u64;
-                        let update = DownloadInfo::new(id, new_size);
-                        println!("{}", update);
-                        h.emit_all("ondownloadupdate", update).unwrap();
-                        match file {
-                            Some(ref mut f) => {
-                                f.write_all(&chunk).unwrap();
-                                status.lock().await.set_curr_size(new_size);
-                            }
-                            None => {
-                                println!("File not open!");
-                            }
-                        }
-                    }
-                    Err(e) => {
-                        println!("Error reading stream: {:?}", e);
-                        return Err::<(), u8>(status.lock().await.get_item().get_id());
-                    }
-                }
-            }
-        } else {
-            let mut stream = res.bytes_stream();
-            let mut new_size = status.lock().await.get_curr_size();
-            // Emit an event here stating that the download is not pausable and otherwise for the other if branch.    
-            while let Some(b) = stream.next().await {
-                match b {
-                    Ok(bytes) => {
-                        new_size += bytes.len() as u64;  
-                        let update = DownloadInfo::new(id, new_size);
-                        h.emit_all("ondownloadupdate", update).unwrap();     
-                        match file {
-                            Some(ref mut f) => {
-                                f.write_all(&bytes).unwrap();
-                                status.lock().await.set_curr_size(new_size);
-                            },
-                            None => {
-                                println!("File not open!");
-                            }
-                        }    
-                    },
-                    Err(e) => {
-                        println!("Error reading stream: {:?}", e);
-                    }
-                }
-            }
+    }
+    if curr_sz == status.lock().await.get_item().get_total_size() {
+        let s = handle.state::<AppDownloadManager>();
+        if s.get_downloads().lock().await.len() != 0 {
+            s.get_downloads()
+                .lock()
+                .await
+                .remove(status.lock().await.get_item().get_id() as usize);
+            h.emit_all("ondownloadremove", id).unwrap();
         }
-        let curr = status.lock().await.get_curr_size();
-        if curr == size {
-            status.lock().await.set_finished();
-            let s = handle.state::<AppDownloadManager>();
-            if s.get_downloads().lock().await.len() != 0 {
-                s.get_downloads()
-                    .lock()
-                    .await
-                    .remove(status.lock().await.get_item().get_id() as usize);
-            }
-        }
-        Ok(())
-    })
-    .await
-    .unwrap()
-    .unwrap_or_else(|e| {
-        println!("Download with id {e} has been paused.");
-    });
-
+    }    
     Ok(())
 }
 
 async fn push_download_to_vec(download: &Arc<Mutex<DownloadStatus>>, handle: AppHandle) {
     let tauri_state: tauri::State<AppDownloadManager> = handle.state();
-    tauri_state.get_downloads().lock().await.push(download.clone());
+    tauri_state
+        .get_downloads()
+        .lock()
+        .await
+        .push(download.clone());
     handle
         .emit_all(
             "ondownload",
@@ -229,21 +156,15 @@ async fn push_download_to_vec(download: &Arc<Mutex<DownloadStatus>>, handle: App
         .expect("Message Could not be emitted.");
 }
 
-fn remove_finished_downloads(handle: AppHandle) {
-    tokio::spawn(async move {
-        let state: tauri::State<AppDownloadManager> = handle.state();
-        let vec = state.get_downloads();
-        vec.lock().await.retain(|e| !e.try_lock().unwrap().is_finished());
-    });
-}
-
 #[post("/")]
-async fn listen_for_downloads(dw: String, data: web::Data<WebServerState>) -> std::io::Result<impl Responder> {
+async fn listen_for_downloads(
+    dw: String,
+    data: web::Data<WebServerState>,
+) -> std::io::Result<impl Responder> {
     let new_data = serde_json::from_str::<DownloadObj>(&dw).unwrap();
     // Get State
     let download = Arc::new(Mutex::new(DownloadStatus::new(new_data)));
     push_download_to_vec(&download, data.handle.clone()).await;
-    remove_finished_downloads(data.handle.clone());
     Ok(HttpResponse::Ok())
 }
 
@@ -262,13 +183,11 @@ fn main() {
             );
             Ok(())
         })
-        .manage(AppDownloadManager::new(Arc::new(Mutex::new(Vec::<Arc<Mutex<DownloadStatus>>>::new()))))
-        .invoke_handler(tauri::generate_handler![
-            pause_download,
-            resume,
-            download,
-            get_download_info
-        ])
+        .manage(AppDownloadManager::new(Arc::new(Mutex::new(Vec::<
+            Arc<Mutex<DownloadStatus>>,
+        >::new(
+        )))))
+        .invoke_handler(tauri::generate_handler![pause_download, resume, download,])
         .run(tauri::generate_context!())
         .expect("Error while running tauri application");
 }
