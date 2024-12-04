@@ -16,10 +16,6 @@ impl DownloadObj {
         &self.title
     }
 
-    /* pub fn concat_number(&mut self) {
-        self.title.push_str("(1)");
-    } */
-
     pub fn get_id(&self) -> u8 {
         self.id
     }
