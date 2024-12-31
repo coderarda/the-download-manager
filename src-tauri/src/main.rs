@@ -108,7 +108,7 @@ async fn download_with_pause(
         h.emit_all("downloadpauseinfo", false).unwrap();
     }
     let mut curr_sz = starting_sz;
-    let buf: &mut [u8] = &mut [0; 2048];
+    let buf: &mut [u8] = &mut [0; 512];
     let mut reader = req.into_reader();
     while curr_sz < status.lock().await.get_item().get_total_size() {
         if status.lock().await.is_paused() {
