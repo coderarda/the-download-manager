@@ -110,14 +110,18 @@ async fn download_with_pause(
     let mut curr_sz = starting_sz;
     let buf: &mut [u8] = &mut [0; 512];
     let mut reader = req.into_reader();
+    let mut count = 0;
     while curr_sz < status.lock().await.get_item().get_total_size() {
         if status.lock().await.is_paused() {
             break;
         }
         let sz = 1024;
         reader.read_exact(buf).unwrap();
-        let update = DownloadInfo::new(id, curr_sz);
-        h.emit_all("ondownloadupdate", update).unwrap();
+        count += 1;
+        if count % 100 == 0 {
+            let update = DownloadInfo::new(id, curr_sz);
+            h.emit_all("ondownloadupdate", update).unwrap();
+        }
         match file {
             Some(ref mut f) => {
                 f.write_all(buf).unwrap();
