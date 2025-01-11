@@ -46,7 +46,7 @@ async fn resume(
 ) -> Result<(), String> {
     for d in state.get_downloads().lock().await.iter() {
         if d.lock().await.get_item().get_id() == id {
-            tokio::spawn(download_with_pause(d.clone(), handle.clone()));
+            tokio::spawn(download_item(d.clone(), handle.clone()));
             break;
         }
     }
@@ -61,14 +61,14 @@ async fn download(
 ) -> Result<(), String> {
     for d in state.get_downloads().lock().await.iter_mut() {
         if d.lock().await.get_item().get_id() == download.get_id() {
-            tokio::spawn(download_with_pause(d.clone(), handle.clone()));
+            tokio::spawn(download_item(d.clone(), handle.clone()));
             break;
         }
     }
     Ok(())
 }
 
-async fn download_with_pause(
+async fn download_item(
     status: Arc<Mutex<DownloadStatus>>,
     handle: tauri::AppHandle,
 ) -> Result<(), ureq::Error> {
@@ -115,8 +115,8 @@ async fn download_with_pause(
         if status.lock().await.is_paused() {
             break;
         }
-        let sz = 1024;
-        reader.read_exact(buf).unwrap();
+        
+        let sz = reader.read(buf).unwrap();
         count += 1;
         if count % 100 == 0 {
             let update = DownloadInfo::new(id, curr_sz);
@@ -134,7 +134,7 @@ async fn download_with_pause(
         }
     }
     if curr_sz == status.lock().await.get_item().get_total_size() {
-        let s = handle.state::<AppDownloadManager>();
+        let s = h.state::<AppDownloadManager>();
         if s.get_downloads().lock().await.len() != 0 {
             s.get_downloads()
                 .lock()
