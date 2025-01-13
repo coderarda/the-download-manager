@@ -108,14 +108,13 @@ async fn download_item(
         h.emit_all("downloadpauseinfo", false).unwrap();
     }
     let mut curr_sz = starting_sz;
-    let buf: &mut [u8] = &mut [0; 512];
+    let buf: &mut [u8] = &mut [0; 2048];
     let mut reader = req.into_reader();
     let mut count = 0;
     while curr_sz < status.lock().await.get_item().get_total_size() {
         if status.lock().await.is_paused() {
             break;
         }
-        
         let sz = reader.read(buf).unwrap();
         count += 1;
         if count % 100 == 0 {
@@ -124,7 +123,7 @@ async fn download_item(
         }
         match file {
             Some(ref mut f) => {
-                f.write_all(buf).unwrap();
+                f.write_all(&buf[..sz]).unwrap();
                 curr_sz += sz as u64;
                 status.lock().await.set_curr_size(curr_sz);
             }
