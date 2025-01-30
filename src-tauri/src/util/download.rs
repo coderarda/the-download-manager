@@ -34,7 +34,6 @@ pub struct DownloadStatus {
     item: DownloadObj,
     paused: bool,
     downloading: bool,
-    curr_size: u64,
 }
 
 impl DownloadStatus {
@@ -43,12 +42,7 @@ impl DownloadStatus {
             item,
             paused: false,
             downloading: false,
-            curr_size: 0,
         }
-    }
-
-    pub fn set_curr_size(&mut self, size: u64) {
-        self.curr_size = size;
     }
     
     pub fn set_pause(&mut self) {
@@ -66,10 +60,6 @@ impl DownloadStatus {
 
     pub fn get_item(&self) -> DownloadObj {
         self.item.clone()
-    }
-
-    pub fn get_curr_size(&self) -> u64 {
-        self.curr_size
     }
 }
 

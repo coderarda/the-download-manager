@@ -48,7 +48,7 @@ export function Home() {
     useEffect(() => {
         const unlisten = listen("ondownload", (e) => {
             let exists = false;
-            const data = JSON.parse(e.payload as string) as DownloadObj;
+            const data = e.payload as DownloadObj;
             downloads.forEach((val) => {
                 if (val.id == data.id) {
                     exists = true;
