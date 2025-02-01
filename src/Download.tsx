@@ -1,5 +1,5 @@
 import { Pause, PlayArrow } from "@mui/icons-material";
-import { Box, Button, TableCell, TableRow } from "@mui/material";
+import { Box, Button, LinearProgress, TableCell, TableRow, Typography } from "@mui/material";
 import { listen } from "@tauri-apps/api/event";
 import React, { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api";
@@ -8,6 +8,7 @@ export default function Download({ val }: { val: DownloadObj }) {
     const [percentage, setPercentage] = useState<number>(0);
     const [pausable, setPausable] = useState(true);
     const [isPaused, setIsPaused] = useState<boolean>(false);
+    let completePercent = parseInt(((percentage / val.filesize) * 100).toFixed());
     useEffect(() => {
         const unlisten = listen("downloadpauseinfo", (e) => {
             const data = e.payload as boolean;
@@ -34,7 +35,10 @@ export default function Download({ val }: { val: DownloadObj }) {
             <TableCell>{val.title}</TableCell>
             <TableCell>{val.url}</TableCell>
             <TableCell>{(val.filesize / (1024 * 1024)).toFixed()} MB</TableCell>
-            <TableCell>% {((percentage / val.filesize) * 100).toFixed()}</TableCell>
+            <TableCell>
+                {completePercent == 100 ? "Complete" : "%" + completePercent} 
+                <LinearProgress variant="determinate" value={completePercent}/>
+            </TableCell>
             <TableCell>
                 <Box flexDirection="row" display="flex">
                     <Button
@@ -55,7 +59,7 @@ export default function Download({ val }: { val: DownloadObj }) {
                             }
                         }
                     >
-                        {isPaused ? <span>Resume</span> : <span>Pause</span>}
+                        {isPaused ? <Typography>Resume</Typography> : <Typography>Pause</Typography>}
                     </Button>
                 </Box>
             </TableCell>

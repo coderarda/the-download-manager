@@ -12,6 +12,15 @@ pub struct DownloadObj {
 
 impl DownloadObj {
 
+    pub fn new(id: u8, url: String, title: String, filesize: u64) -> Self {
+        Self {
+            id,
+            url,
+            title,
+            filesize,
+        }
+    }
+
     pub fn get_file_name(&self) -> &String {
         &self.title
     }

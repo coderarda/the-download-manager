@@ -38,8 +38,8 @@
         "fullscreen": false,
         "resizable": true,
         "title": "The Download Manager",
-        "width": 900,
-        "height": 650
+        "width": 1000,
+        "height": 700
       }
     ]
   }

@@ -6,6 +6,8 @@ use actix_web::{
     web::{self, Data},
     App, HttpResponse, HttpServer, Responder,
 };
+use regex::Regex;
+use reqwest::header::CONTENT_LENGTH;
 use std::{io::Write, sync::Arc, time::Duration};
 use tauri::{AppHandle, Manager};
 use tokio::sync::Mutex;
@@ -21,6 +23,32 @@ struct WebServerState {
 }
 
 #[tauri::command]
+async fn get_download_info(
+    state: tauri::State<'_, AppDownloadManager>,
+    mut url: String,
+) -> Result<DownloadObj, String> {
+    let client = reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::limited(5))
+        .build()
+        .unwrap();
+    let resp = client.head(&url).send().await.unwrap();
+    url = resp.url().to_string();
+    let total_size = resp
+        .headers()
+        .get(CONTENT_LENGTH)
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .parse::<u64>()
+        .unwrap();
+    let id = (state.get_downloads().lock().await.len()) as u8;
+    let re = Regex::new(r"[^/]+$").unwrap();
+    let title = re.find(&url)
+        .map(|m| m.as_str().split('?').next().unwrap().to_string()).unwrap();
+    Ok(DownloadObj::new(id, url, title, total_size))
+}
+
+#[tauri::command]
 async fn pause_download(state: tauri::State<'_, AppDownloadManager>, id: u8) -> Result<(), String> {
     for d in state.get_downloads().lock().await.iter_mut() {
         if d.lock().await.get_item().get_id() == id {
@@ -32,13 +60,27 @@ async fn pause_download(state: tauri::State<'_, AppDownloadManager>, id: u8) -> 
 }
 
 #[tauri::command]
-async fn resume(
-    state: tauri::State<'_, AppDownloadManager>,
-    id: u8,
-) -> Result<(), String> {
+async fn resume(state: tauri::State<'_, AppDownloadManager>, id: u8) -> Result<(), String> {
     for d in state.get_downloads().lock().await.iter() {
         if d.lock().await.get_item().get_id() == id {
             d.lock().await.set_downloading();
+            break;
+        }
+    }
+    Ok(())
+}
+
+#[tauri::command]
+async fn download_manually_from_url(
+    state: tauri::State<'_, AppDownloadManager>,
+    handle: AppHandle,
+    download: DownloadObj,
+) -> Result<(), String> {
+    let download_status = Arc::new(Mutex::new(DownloadStatus::new(download.clone())));
+    state.get_downloads().lock().await.push(download_status.clone());
+    for d in state.get_downloads().lock().await.iter_mut() {
+        if d.lock().await.get_item().get_id() == download.get_id() {
+            tokio::spawn(download_item(d.clone(), handle.clone()));
             break;
         }
     }
@@ -85,7 +127,7 @@ async fn download_item(
         while status.lock().await.is_paused() {
             tokio::time::sleep(Duration::from_millis(1)).await;
         }
-        
+
         file.write_all(&buf).unwrap();
         curr_sz += buf.len() as u64;
 
@@ -102,7 +144,6 @@ async fn download_item(
                 .lock()
                 .await
                 .remove(status.lock().await.get_item().get_id() as usize);
-            h.emit_all("ondownloadremove", id).unwrap();
         }
     }
     Ok(())
@@ -147,9 +188,17 @@ fn main() {
             );
             Ok(())
         })
-        .manage(AppDownloadManager::new(
-            Arc::new(Mutex::new(Vec::<Arc<Mutex<DownloadStatus>>>::new()))))
-        .invoke_handler(tauri::generate_handler![pause_download, resume, download])
+        .manage(AppDownloadManager::new(Arc::new(Mutex::new(Vec::<
+            Arc<Mutex<DownloadStatus>>,
+        >::new(
+        )))))
+        .invoke_handler(tauri::generate_handler![
+            pause_download,
+            resume,
+            download,
+            get_download_info,
+            download_manually_from_url
+        ])
         .run(tauri::generate_context!())
         .expect("Error while running tauri application");
 }

@@ -62,14 +62,7 @@ export function Home() {
             }
             sessionStorage.setItem("items", JSON.stringify(downloads));
         });
-        const unlisten2 = listen("ondownloadremove", (e) => {
-            const data = e.payload as number;
-            const newDownloads = downloads.filter((val) => val.id != data);
-            setDownloads(newDownloads);
-            sessionStorage.setItem("items", JSON.stringify(newDownloads));
-        });
         return () => {
-            unlisten2.then((f) => f()).catch((err) => console.log(err));
             unlisten.then((f) => f()).catch((err) => console.log(err));
         };
     }, []);
@@ -108,7 +101,6 @@ export function Home() {
                         fullWidth
                         value={filename}
                         onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                            // TODO: Filename is being assigned into current URL???
                             setFilename(e.target.value);
                         }}
                     />
@@ -181,7 +173,7 @@ export function Home() {
                                         setDownloads([...downloads, obj]);
                                         setFilename(obj.title);
                                         console.log(`Download of filename ${obj.title} started!`);
-                                        invoke("download", { download: obj });
+                                        invoke("download_manually_from_url", { download: obj });
                                     })();
                                 }
                             }}
