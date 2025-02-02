@@ -167,7 +167,6 @@ async fn listen_for_downloads(
     data: web::Data<WebServerState>,
 ) -> std::io::Result<impl Responder> {
     let new_data = serde_json::from_str::<DownloadObj>(&dw).unwrap();
-    // Get State
     let download = Arc::new(Mutex::new(DownloadStatus::new(new_data)));
     push_download_to_vec(&download, data.handle.clone()).await;
     Ok(HttpResponse::Ok())
