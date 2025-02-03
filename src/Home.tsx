@@ -148,6 +148,7 @@ export function Home() {
                     </Typography>
                     <TextField
                         label="URL"
+                        id="url-box"
                         size="small"
                         margin="normal"
                         fullWidth
@@ -161,6 +162,7 @@ export function Home() {
                             variant="contained"
                             sx={{ marginRight: 2, position: "relative" }}
                             color="primary"
+                            id="download-btn"
                             onClick={() => {
                                 setOpenAddLink(false);
                                 console.log("Link added!");
@@ -232,6 +234,7 @@ export function Home() {
                         setOpenDial(false);
                         setOpenAddLink(true);
                     }}
+                    id="download-from-url"
                 />
                 <SpeedDialAction
                     key={1}

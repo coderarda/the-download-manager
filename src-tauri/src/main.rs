@@ -71,6 +71,16 @@ async fn resume(state: tauri::State<'_, AppDownloadManager>, id: u8) -> Result<(
 }
 
 #[tauri::command]
+async fn remove_download(state: tauri::State<'_, AppDownloadManager>, id: u8) -> Result<(), String> {
+    state.get_downloads()
+        .lock()
+        .await
+        .remove(id as usize);
+
+    Ok(())
+}
+
+#[tauri::command]
 async fn download_manually_from_url(
     state: tauri::State<'_, AppDownloadManager>,
     handle: AppHandle,
@@ -137,15 +147,6 @@ async fn download_item(
         }
         count += 1;
     }
-    if curr_sz == status.lock().await.get_item().get_total_size() {
-        let s = h.state::<AppDownloadManager>();
-        if s.get_downloads().lock().await.len() != 0 {
-            s.get_downloads()
-                .lock()
-                .await
-                .remove(status.lock().await.get_item().get_id() as usize);
-        }
-    }
     Ok(())
 }
 
@@ -196,7 +197,8 @@ fn main() {
             resume,
             download,
             get_download_info,
-            download_manually_from_url
+            download_manually_from_url,
+            remove_download
         ])
         .run(tauri::generate_context!())
         .expect("Error while running tauri application");

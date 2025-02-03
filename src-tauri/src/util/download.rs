@@ -33,9 +33,11 @@ impl DownloadObj {
         self.url.clone()
     }
 
+    /*
     pub fn get_total_size(&self) -> u64{
         self.filesize
-    }
+    } 
+    */
 }
 
 #[derive(Clone, Debug)]

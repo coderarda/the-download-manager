@@ -1,4 +1,4 @@
-import { Pause, PlayArrow } from "@mui/icons-material";
+import { Pause, PlayArrow, Delete } from "@mui/icons-material";
 import { Box, Button, LinearProgress, TableCell, TableRow, Typography } from "@mui/material";
 import { listen } from "@tauri-apps/api/event";
 import React, { useEffect, useState } from "react";
@@ -60,6 +60,9 @@ export default function Download({ val }: { val: DownloadObj }) {
                         }
                     >
                         {isPaused ? <Typography>Resume</Typography> : <Typography>Pause</Typography>}
+                    </Button>
+                    <Button size="small" variant="contained" color="error" onClick={() => invoke("remove_download", { id: val.id })}>
+                        <Delete />
                     </Button>
                 </Box>
             </TableCell>
