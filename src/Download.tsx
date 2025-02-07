@@ -2,7 +2,7 @@ import { Pause, PlayArrow, Delete } from "@mui/icons-material";
 import { Box, Button, LinearProgress, TableCell, TableRow, Typography } from "@mui/material";
 import { listen } from "@tauri-apps/api/event";
 import React, { useEffect, useState } from "react";
-import { invoke } from "@tauri-apps/api";
+import { invoke } from "@tauri-apps/api/core";
 
 export default function Download({ val }: { val: DownloadObj }) {
     const [percentage, setPercentage] = useState<number>(0);

@@ -2,7 +2,7 @@ const os = require("os");
 const path = require("path");
 const { spawn, spawnSync } = require("child_process");
 const { Builder, By, Capabilities } = require("selenium-webdriver");
-const { expect } = require("chai");
+const { expect } = import("chai");
 
 let driver;
 
@@ -15,18 +15,17 @@ const application = path.resolve(
     '..',
     'target',
     'release',
-    'hello-tauri-webdriver'
+    'the-dw-manager'
 );
 
 before(async function () {
-    this.timeout(120000)
-  
     spawnSync('cargo', ['build', '--release'])
     tauriDriver = spawn(
-      path.resolve(os.homedir(), '.cargo', 'bin', 'tauri-driver'),
-      [],
-      { stdio: [null, process.stdout, process.stderr] }
+        path.resolve(os.homedir(), '.cargo', 'bin', 'tauri-driver'),
+        [],
+        { stdio: [null, process.stdout, process.stderr] }
     )
+    this.timeout(120000)
   
     const capabilities = new Capabilities()
     capabilities.set('tauri:options', { application })

@@ -11,7 +11,6 @@ pub struct DownloadObj {
 }
 
 impl DownloadObj {
-
     pub fn new(id: u8, url: String, title: String, filesize: u64) -> Self {
         Self {
             id,
@@ -36,7 +35,7 @@ impl DownloadObj {
     /*
     pub fn get_total_size(&self) -> u64{
         self.filesize
-    } 
+    }
     */
 }
 
@@ -55,7 +54,7 @@ impl DownloadStatus {
             downloading: false,
         }
     }
-    
+
     pub fn set_pause(&mut self) {
         self.paused = true;
     }

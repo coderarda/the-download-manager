@@ -18,7 +18,7 @@ import React, { useState, useEffect } from "react";
 import Download from "./Download";
 import { Add, Settings, Alarm } from "@mui/icons-material";
 import { useNavigate } from "react-router-dom";
-import { invoke } from "@tauri-apps/api";
+import { invoke } from "@tauri-apps/api/core";
 import ScheduleDownloadModal from "./ScheduleDownloadModal";
 
 const style = {
