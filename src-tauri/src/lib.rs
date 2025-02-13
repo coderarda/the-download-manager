@@ -4,10 +4,12 @@ use actix_web::{
     App, HttpResponse, HttpServer, Responder,
 };
 use regex::Regex;
-use reqwest::header::CONTENT_LENGTH;
+use tauri_plugin_http::reqwest;
+use tauri_plugin_http::reqwest::header::CONTENT_LENGTH;
 use std::{io::Write, sync::Arc, time::Duration};
 use tauri::{AppHandle, Emitter, Manager};
 use tokio::sync::Mutex;
+use tauri_plugin_fs::{FsExt, OpenOptions};
 
 mod util;
 use util::download::{DownloadInfo, DownloadObj, DownloadStatus};
@@ -69,12 +71,14 @@ async fn resume(state: tauri::State<'_, AppDownloadManager>, id: u8) -> Result<(
 }
 
 #[tauri::command]
-async fn remove_download(
-    state: tauri::State<'_, AppDownloadManager>,
-    id: u8,
-) -> Result<(), String> {
-    state.get_downloads().lock().await.remove(id as usize);
-
+async fn remove_download(handle: AppHandle, id: u8) -> Result<(), String> {
+    handle
+        .state::<AppDownloadManager>()
+        .get_downloads()
+        .lock()
+        .await
+        .remove(id as usize);
+    handle.emit("download_removed", id).unwrap();
     Ok(())
 }
 
@@ -124,10 +128,10 @@ async fn download_item(
         .download_dir()
         .unwrap()
         .join(status.lock().await.get_item().get_file_name());
-    let h = handle.clone();
     let id = status.lock().await.get_item().get_id();
     status.lock().await.set_downloading();
-    let mut file = std::fs::File::create(filepath).unwrap();
+    let mut file_opts = OpenOptions::new();
+    let mut file = handle.fs().open(filepath, file_opts.create_new(true).write(true).clone()).unwrap();
     let client = reqwest::Client::new();
     let mut req = client
         .get(status.lock().await.get_item().get_url())
@@ -145,9 +149,9 @@ async fn download_item(
         file.write_all(&buf).unwrap();
         curr_sz += buf.len() as u64;
 
-        if count % 100 == 0 {
+        if count % 50 == 0 {
             let update = DownloadInfo::new(id, curr_sz);
-            h.emit("ondownloadupdate", update).unwrap();
+            handle.emit("ondownloadupdate", update).unwrap();
         }
         count += 1;
     }
@@ -180,6 +184,7 @@ async fn listen_for_downloads(
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_shell::init())
         .setup(|app| {

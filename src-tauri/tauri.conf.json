@@ -29,8 +29,7 @@
         "resizable": true,
         "title": "The Download Manager",
         "width": 1000,
-        "height": 700,
-        "useHttpsScheme": true
+        "height": 700
       }
     ],
     "security": {
