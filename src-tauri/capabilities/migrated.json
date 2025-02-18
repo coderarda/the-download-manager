@@ -10,6 +10,11 @@
     "shell:allow-open",
     "shell:default",
     "fs:default",
-    "http:default"
+    "http:default",
+    "core:window:allow-close",
+    "core:window:allow-maximize",
+    "core:window:allow-minimize",
+    "core:window:allow-set-fullscreen",
+    "os:default"
   ]
 }

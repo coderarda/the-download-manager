@@ -4,12 +4,12 @@ use actix_web::{
     App, HttpResponse, HttpServer, Responder,
 };
 use regex::Regex;
+use std::{io::Write, path::Path, sync::Arc, time::Duration};
+use tauri::{AppHandle, Emitter, Manager};
+use tauri_plugin_fs::{FsExt, OpenOptions};
 use tauri_plugin_http::reqwest;
 use tauri_plugin_http::reqwest::header::CONTENT_LENGTH;
-use std::{io::Write, sync::Arc, time::Duration};
-use tauri::{AppHandle, Emitter, Manager};
 use tokio::sync::Mutex;
-use tauri_plugin_fs::{FsExt, OpenOptions};
 
 mod util;
 use util::download::{DownloadInfo, DownloadObj, DownloadStatus};
@@ -131,7 +131,22 @@ async fn download_item(
     let id = status.lock().await.get_item().get_id();
     status.lock().await.set_downloading();
     let mut file_opts = OpenOptions::new();
-    let mut file = handle.fs().open(filepath, file_opts.create_new(true).write(true).clone()).unwrap();
+    let p = filepath.clone();
+    let dw_item = status.lock().await.get_item();
+    let h = handle.clone();
+    let mut file = handle
+        .fs()
+        .open(filepath, file_opts.create_new(true).write(true).clone())
+        .unwrap_or_else(move |_| {
+            h.fs()
+                .open(
+                    p.clone().join(Path::new(
+                        (dw_item.get_file_name().to_owned() + "(1)").as_str(),
+                    )),
+                    file_opts.create(true).write(true).clone(),
+                )
+                .unwrap()
+        });
     let client = reqwest::Client::new();
     let mut req = client
         .get(status.lock().await.get_item().get_url())
@@ -184,11 +199,18 @@ async fn listen_for_downloads(
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_os::init())
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_shell::init())
         .setup(|app| {
             let h = app.handle().clone();
+            let window = app.get_webview_window("main").unwrap();
+            window.on_window_event(|event| {
+                if let tauri::WindowEvent::CloseRequested { .. } = event {
+                    // Save downloads to pickledb
+                }
+            });
             tauri::async_runtime::spawn(
                 HttpServer::new(move || {
                     App::new()
