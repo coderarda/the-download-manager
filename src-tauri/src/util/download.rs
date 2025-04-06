@@ -39,7 +39,7 @@ impl DownloadObj {
     */
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize)]
 pub struct DownloadStatus {
     item: DownloadObj,
     paused: bool,
@@ -47,11 +47,11 @@ pub struct DownloadStatus {
 }
 
 impl DownloadStatus {
-    pub fn new(item: DownloadObj) -> Self {
+    pub fn new(item: DownloadObj, paused: bool, downloading: bool) -> Self {
         Self {
             item,
-            paused: false,
-            downloading: false,
+            paused,
+            downloading,
         }
     }
 

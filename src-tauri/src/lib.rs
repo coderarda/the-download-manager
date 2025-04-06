@@ -4,15 +4,14 @@ use actix_web::{
     App, HttpResponse, HttpServer, Responder,
 };
 use regex::Regex;
-use std::{io::Write, path::Path, sync::Arc, time::Duration};
+use std::{io::Write, sync::Arc, time::Duration};
 use tauri::{AppHandle, Emitter, Manager};
-use tauri_plugin_fs::{FsExt, OpenOptions};
 use tauri_plugin_http::reqwest;
 use tauri_plugin_http::reqwest::header::CONTENT_LENGTH;
 use tokio::sync::Mutex;
 
 mod util;
-use util::download::{DownloadInfo, DownloadObj, DownloadStatus};
+use util::{db::Storage, download::{DownloadInfo, DownloadObj, DownloadStatus}};
 use util::tauri_state::AppDownloadManager;
 
 #[derive(Clone)]
@@ -88,7 +87,7 @@ async fn download_manually_from_url(
     handle: AppHandle,
     download: DownloadObj,
 ) -> Result<(), String> {
-    let download_status = Arc::new(Mutex::new(DownloadStatus::new(download.clone())));
+    let download_status = Arc::new(Mutex::new(DownloadStatus::new(download.clone(), false, false)));
     state
         .get_downloads()
         .lock()
@@ -123,30 +122,51 @@ async fn download_item(
     handle: tauri::AppHandle,
 ) -> Result<(), reqwest::Error> {
     println!("Download starting...");
-    let filepath = handle
+    let mut filepath = handle
         .path()
         .download_dir()
         .unwrap()
         .join(status.lock().await.get_item().get_file_name());
     let id = status.lock().await.get_item().get_id();
     status.lock().await.set_downloading();
-    let mut file_opts = OpenOptions::new();
-    let p = filepath.clone();
+    let mut file_opts = std::fs::OpenOptions::new();
     let dw_item = status.lock().await.get_item();
-    let h = handle.clone();
-    let mut file = handle
-        .fs()
-        .open(filepath, file_opts.create_new(true).write(true).clone())
-        .unwrap_or_else(move |_| {
-            h.fs()
-                .open(
-                    p.clone().join(Path::new(
-                        (dw_item.get_file_name().to_owned() + "(1)").as_str(),
-                    )),
-                    file_opts.create(true).write(true).clone(),
-                )
-                .unwrap()
-        });
+
+    // Ensure unique filename by appending or incrementing (1), (2), etc., if necessary
+    let mut counter = 1;
+    while std::fs::metadata(&filepath).is_ok() {
+        let file_stem = dw_item.get_file_name().rsplit_once('.').map_or(
+            dw_item.get_file_name().as_str(),
+            |(stem, _)| stem,
+        );
+        let extension = dw_item.get_file_name().rsplit_once('.').map(|(_, ext)| ext);
+
+        // Check if the filename already ends with a number in parentheses
+        let new_stem = if let Some(captures) = Regex::new(r"^(.*)\((\d+)\)$")
+            .unwrap()
+            .captures(file_stem)
+        {
+            let base_stem = captures.get(1).unwrap().as_str();
+            let current_number: u32 = captures.get(2).unwrap().as_str().parse().unwrap();
+            format!("{}({})", base_stem, current_number + 1)
+        } else {
+            format!("{}({})", file_stem, counter)
+        };
+
+        let new_name = match extension {
+            Some(ext) => format!("{}.{}", new_stem, ext),
+            None => new_stem,
+        };
+        filepath = handle.path().download_dir().unwrap().join(new_name);
+        counter += 1;
+    }
+
+    let mut file = file_opts
+        .create(true)
+        .write(true)
+        .open(&filepath)
+        .unwrap();
+
     let client = reqwest::Client::new();
     let mut req = client
         .get(status.lock().await.get_item().get_url())
@@ -191,7 +211,7 @@ async fn listen_for_downloads(
     data: web::Data<WebServerState>,
 ) -> std::io::Result<impl Responder> {
     let new_data = serde_json::from_str::<DownloadObj>(&dw).unwrap();
-    let download = Arc::new(Mutex::new(DownloadStatus::new(new_data)));
+    let download = Arc::new(Mutex::new(DownloadStatus::new(new_data, false, false)));
     push_download_to_vec(&download, data.handle.clone()).await;
     Ok(HttpResponse::Ok())
 }
@@ -201,21 +221,28 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_os::init())
         .plugin(tauri_plugin_http::init())
-        .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_shell::init())
         .setup(|app| {
             let h = app.handle().clone();
+            let handle = h.clone();
             let window = app.get_webview_window("main").unwrap();
-            window.on_window_event(|event| {
+            window.on_window_event(move |event| {
                 if let tauri::WindowEvent::CloseRequested { .. } = event {
                     // Save downloads to pickledb
+                    tokio::runtime::Runtime::new().unwrap().block_on(async {
+                        let mut st = Storage::new(
+                            h.path().app_data_dir().unwrap().join("downloads.db").to_str().unwrap(),
+                            h.clone().state::<AppDownloadManager>().get_downloads().clone(),
+                        );
+                        st.save().await;
+                    });
                 }
             });
             tauri::async_runtime::spawn(
                 HttpServer::new(move || {
                     App::new()
                         .service(listen_for_downloads)
-                        .app_data(Data::new(WebServerState { handle: h.clone() }))
+                        .app_data(Data::new(WebServerState { handle: handle.clone() }))
                 })
                 .bind(("localhost", 4000))?
                 .run(),

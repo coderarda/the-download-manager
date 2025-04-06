@@ -10,6 +10,7 @@
     "shell:allow-open",
     "shell:default",
     "fs:default",
+    "fs:allow-appdata-write",
     "http:default",
     "core:window:allow-close",
     "core:window:allow-maximize",

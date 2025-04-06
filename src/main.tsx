@@ -11,7 +11,7 @@ import { common, deepPurple } from "@mui/material/colors";
 import { Home } from "./Home";
 import { Settings } from "./Settings";
 import { AppBarComponent } from "./AppBarComponent";
-import { Close, Maximize, Minimize } from "@mui/icons-material";
+import { Close, Crop75, Minimize } from "@mui/icons-material";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { platform } from "@tauri-apps/plugin-os";
 
@@ -48,7 +48,7 @@ function Root() {
                     } else {
                         getCurrentWindow().maximize();
                     }
-                }}><Maximize color="secondary" /></Button>
+                }}><Crop75 color="secondary" /></Button>
                 <Button onClick={() => {
                     getCurrentWindow().close();
                 }}><Close color="secondary" /></Button>

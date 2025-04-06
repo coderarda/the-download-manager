@@ -2829,6 +2829,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "pickledb"
+version = "0.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c53a5ade47760e8cc4986bdc5e72daeffaaaee64cbc374f9cfe0a00c1cd87b1f"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "pin-project-lite"
 version = "0.2.16"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4233,6 +4243,7 @@ version = "0.0.0"
 dependencies = [
  "actix-web",
  "futures-util",
+ "pickledb",
  "regex",
  "serde",
  "serde_json",
