@@ -39,7 +39,7 @@ impl DownloadObj {
     */
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct DownloadStatus {
     item: DownloadObj,
     paused: bool,

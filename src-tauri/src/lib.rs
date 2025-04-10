@@ -226,15 +226,25 @@ pub fn run() {
             let h = app.handle().clone();
             let handle = h.clone();
             let window = app.get_webview_window("main").unwrap();
+            let state = h.state::<AppDownloadManager>();
+            // Load downloads from pickledb
+            let mut st = Storage::new(
+                h.path().app_data_dir().unwrap().join("downloads.db").to_str().unwrap(),
+                state.get_downloads().clone(),
+            );
+            tokio::runtime::Runtime::new().unwrap().block_on(async {
+                st.load().await;
+                for d in state.get_downloads().lock().await.iter() {
+                    let download = d.lock().await.get_item();
+                    h.emit("ondownload", download).unwrap();
+                } 
+            }); 
             window.on_window_event(move |event| {
+                let mut s = st.clone();
                 if let tauri::WindowEvent::CloseRequested { .. } = event {
                     // Save downloads to pickledb
-                    tokio::runtime::Runtime::new().unwrap().block_on(async {
-                        let mut st = Storage::new(
-                            h.path().app_data_dir().unwrap().join("downloads.db").to_str().unwrap(),
-                            h.clone().state::<AppDownloadManager>().get_downloads().clone(),
-                        );
-                        st.save().await;
+                    tokio::runtime::Runtime::new().unwrap().block_on(async move {
+                        s.save().await;
                     });
                 }
             });
