@@ -4,10 +4,11 @@ import { listen } from "@tauri-apps/api/event";
 import React, { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 
-export default function Download({ val }: { val: DownloadObj }) {
+export default function Download({ status }: { status: DownloadStatus }) {
+    const val = status.obj;
     const [percentage, setPercentage] = useState<number>(0);
-    const [pausable, setPausable] = useState(true);
-    const [isPaused, setIsPaused] = useState<boolean>(false);
+    const [pausable, setPausable] = useState(false);
+    const [isPaused, setIsPaused] = useState<boolean>(status.paused);
     let completePercent = parseInt(((percentage / val.filesize) * 100).toFixed());
     useEffect(() => {
         const unlisten = listen("downloadpauseinfo", (e) => {

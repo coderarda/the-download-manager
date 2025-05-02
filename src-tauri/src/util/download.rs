@@ -1,6 +1,7 @@
 use std::fmt::Display;
 
 use serde::{Deserialize, Serialize};
+use tokio::sync::MutexGuard;
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct DownloadObj {
@@ -55,12 +56,20 @@ impl DownloadStatus {
         }
     }
 
+    pub fn from_mutex_guard(guard: &MutexGuard<'_, DownloadStatus>) -> Self {
+        Self { item: guard.get_item(), paused: guard.paused.clone() , downloading: guard.is_downloading() }
+    }
+
     pub fn set_pause(&mut self) {
         self.paused = true;
     }
 
     pub fn is_paused(&self) -> bool {
         self.paused
+    }
+
+    pub fn is_downloading(&self) -> bool {
+        self.downloading
     }
 
     pub fn set_downloading(&mut self) {

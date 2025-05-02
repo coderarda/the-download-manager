@@ -33,11 +33,11 @@ function Root() {
     return (
         <ThemeProvider theme={theme}>
             <CssBaseline />
-            <Box sx={{ background: deepPurple[500] }} width={"100%"} display={"flex"} flexDirection={"row"} justifyContent={"end"}>
+            <Box data-tauri-drag-region sx={{ background: deepPurple[500] }} width={"100%"} display={"flex"} flexDirection={"row"} justifyContent={"end"}>
                 <Button onClick={() => {
                     getCurrentWindow().minimize();
                 }}><Minimize color="secondary" /></Button>
-                <Button onClick={ async () => {
+                <Button onClick={async () => {
                     // check if macos then fullscreen
                     if (platform() == "macos") {
                         if (await getCurrentWindow().isFullscreen()) {

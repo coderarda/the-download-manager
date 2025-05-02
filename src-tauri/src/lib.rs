@@ -168,6 +168,7 @@ async fn download_item(
         .unwrap();
 
     let client = reqwest::Client::new();
+    // Set Range request header to resume download
     let mut req = client
         .get(status.lock().await.get_item().get_url())
         .send()
@@ -224,27 +225,32 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .setup(|app| {
             let h = app.handle().clone();
-            let handle = h.clone();
+            let handle_clone = h.clone();
+            let handle = handle_clone.clone();
             let window = app.get_webview_window("main").unwrap();
             let state = h.state::<AppDownloadManager>();
             // Load downloads from pickledb
             let mut st = Storage::new(
                 h.path().app_data_dir().unwrap().join("downloads.db").to_str().unwrap(),
-                state.get_downloads().clone(),
-            );
+            ); 
             tokio::runtime::Runtime::new().unwrap().block_on(async {
-                st.load().await;
+                st.load(state.get_downloads()).await;
+                let mut downloads_new = Vec::new();
                 for d in state.get_downloads().lock().await.iter() {
-                    let download = d.lock().await.get_item();
-                    h.emit("ondownload", download).unwrap();
-                } 
+                    let download = d.lock().await;
+                    downloads_new.push(DownloadStatus::from_mutex_guard(&download));
+                }
+                h.emit("ondownloadload", downloads_new).unwrap();
             }); 
+
             window.on_window_event(move |event| {
                 let mut s = st.clone();
+                let new_handle = handle_clone.clone();
+                let new_state = new_handle.state::<AppDownloadManager>();
                 if let tauri::WindowEvent::CloseRequested { .. } = event {
                     // Save downloads to pickledb
                     tokio::runtime::Runtime::new().unwrap().block_on(async move {
-                        s.save().await;
+                        s.save(new_state.get_downloads()).await;
                     });
                 }
             });

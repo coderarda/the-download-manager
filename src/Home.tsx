@@ -41,16 +41,21 @@ export function Home() {
     const [scheduleDownloadModalVisibility, setScheduleDownloadModalVisibility] =
         useState(false);
     const [filename, setFilename] = useState<string>();
-    const [downloads, setDownloads] = useState<DownloadObj[]>(
-        stored != null ? (JSON.parse(stored) as DownloadObj[]) : [],
+    const [downloads, setDownloads] = useState<DownloadStatus[]>(
+        stored != null ? (JSON.parse(stored) as DownloadStatus[]) : [],
     );
     const [queuedDownload, setQueuedDownload] = useState<DownloadObj | null>(null);
     useEffect(() => {
+        const unlisten2 = listen("ondownloadload", (e) => {
+            const initialDownloads = e.payload as DownloadStatus[];
+            setDownloads([...downloads, ...initialDownloads]);
+            sessionStorage.setItem("items", JSON.stringify(downloads));
+        });
         const unlisten = listen("ondownload", (e) => {
             let exists = false;
             const data = e.payload as DownloadObj;
             downloads.forEach((val) => {
-                if (val.id == data.id) {
+                if (val.obj.id == data.id) {
                     exists = true;
                 }
             });
@@ -64,12 +69,13 @@ export function Home() {
         });
         const removeUnlisten = listen("download_removed", (e) => {
             const data = e.payload as number;
-            setDownloads(downloads.filter((val) => val.id != data));
+            setDownloads(downloads.filter((val) => val.obj.id != data));
             sessionStorage.setItem("items", JSON.stringify(downloads));
         });
         return () => {
             unlisten.then((f) => f()).catch((err) => console.log(err));
             removeUnlisten.then((f) => f()).catch((err) => console.log(err));
+            unlisten2.then((f) => f()).catch((err) => console.log(err));
         };
     }, []);
     const navigate = useNavigate();
@@ -118,7 +124,11 @@ export function Home() {
                             onClick={() => {
                                 setOpenAutoAddLink(false);
                                 if (queuedDownload) {
-                                    setDownloads([...downloads, queuedDownload]);
+                                    const newStatus: DownloadStatus = {
+                                        obj: queuedDownload,
+                                        paused: false,
+                                    };
+                                    setDownloads([...downloads, newStatus]);
                                     invoke("download", { download: queuedDownload });
                                 }
                             }}
@@ -177,8 +187,12 @@ export function Home() {
                                         const obj: DownloadObj = await invoke("get_download_info", {
                                             url: currURL,
                                         });
+                                        const newStatus: DownloadStatus = {
+                                            obj: obj,
+                                            paused: false,
+                                        };
                                         console.log("Download info function invoked!");
-                                        setDownloads([...downloads, obj]);
+                                        setDownloads([...downloads, newStatus]);
                                         setFilename(obj.title);
                                         console.log(`Download of filename ${obj.title} started!`);
                                         invoke("download_manually_from_url", { download: obj });
@@ -219,7 +233,7 @@ export function Home() {
                 </TableHead>
                 <TableBody>
                     {downloads.map((val) => {
-                        return <Download key={val.id} val={val} />;
+                        return <Download key={val.obj.id} status={val} />;
                     })}
                 </TableBody>
             </Table>

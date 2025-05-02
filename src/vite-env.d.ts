@@ -11,3 +11,8 @@ declare type DownloadInfo = {
     id: number,
     chunk_size: number,
 }
+
+declare type DownloadStatus = {
+    obj: DownloadObj,
+    paused: boolean,
+}
