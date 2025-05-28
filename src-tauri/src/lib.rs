@@ -229,10 +229,9 @@ pub fn run() {
             let handle = handle_clone.clone();
             let window = app.get_webview_window("main").unwrap();
             let state = h.state::<AppDownloadManager>();
-            // Load downloads from pickledb
-            let mut st = Storage::new(
-                h.path().app_data_dir().unwrap().join("downloads.db").to_str().unwrap(),
-            ); 
+            // Load downloads from db
+            let db_path = h.path().app_local_data_dir().unwrap().join("downloads.db");
+            let st = Storage::new(db_path.to_str().unwrap());
             tokio::runtime::Runtime::new().unwrap().block_on(async {
                 st.load(state.get_downloads()).await;
                 let mut downloads_new = Vec::new();
@@ -244,11 +243,11 @@ pub fn run() {
             }); 
 
             window.on_window_event(move |event| {
-                let mut s = st.clone();
+                let s = st.clone();
                 let new_handle = handle_clone.clone();
                 let new_state = new_handle.state::<AppDownloadManager>();
                 if let tauri::WindowEvent::CloseRequested { .. } = event {
-                    // Save downloads to pickledb
+                    // Save downloads to db
                     tokio::runtime::Runtime::new().unwrap().block_on(async move {
                         s.save(new_state.get_downloads()).await;
                     });

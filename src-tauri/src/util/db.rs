@@ -1,47 +1,33 @@
+use polodb_core::{bson::doc, CollectionT, Database};
+use tokio::sync::Mutex;
+use std::sync::Arc;
+
 use super::download::DownloadStatus;
-use pickledb::PickleDb;
-use std::sync::{Arc, Mutex};
 
 #[derive(Clone)]
 pub struct Storage {
-    db: Arc<Mutex<PickleDb>>,
+    db: Database,
 }
 
 impl Storage {
     pub fn new(path: &str) -> Self {
-        let db = Arc::new(Mutex::new(PickleDb::new(
-            path,
-            pickledb::PickleDbDumpPolicy::AutoDump,
-            pickledb::SerializationMethod::Json,
-        )));
+        let db = Database::open_path(path).unwrap();
         Self { db }
     }
 
-    pub async fn save(&mut self, downloads: Arc<tokio::sync::Mutex<Vec<Arc<tokio::sync::Mutex<DownloadStatus>>>>>) {
-        if !self.db.lock().unwrap().exists("downloads") {
-            self.db.lock().unwrap().lcreate("downloads").unwrap();
-        }
+    pub async fn save(&self, downloads: Arc<Mutex<Vec<Arc<Mutex<DownloadStatus>>>>>) {
         for d in downloads.lock().await.iter() {
-            let download = d.lock().await.get_item();
-            let st = DownloadStatus::new(download, false, false);
-            self.db
-                .lock()
-                .unwrap()
-                .ladd("downloads", &st)
-                .expect("Failed to add download to database");
-        }
+            let d = d.lock().await;
+            let coll = self.db.collection::<DownloadStatus>("downloads");
+            coll.insert_one(d.clone()).unwrap();
+        }        
     }
 
-    pub async fn load(&mut self, downloads: Arc<tokio::sync::Mutex<Vec<Arc<tokio::sync::Mutex<DownloadStatus>>>>>) {
-        for i in 0..=self.db.lock().unwrap().llen("downloads") {
-            let dw = self
-                .db
-                .lock()
-                .unwrap()
-                .lget::<DownloadStatus>("downloads", i as usize)
-                .unwrap();
-            let mutex = Arc::new(tokio::sync::Mutex::new(dw));
-            downloads.lock().await.push(mutex.clone());
+    pub async fn load(&self, downloads: Arc<Mutex<Vec<Arc<Mutex<DownloadStatus>>>>>) {
+        let coll = self.db.collection::<DownloadStatus>("downloads");
+        for doc in coll.find(doc! {}).run().unwrap() {
+            let download: DownloadStatus = doc.unwrap();
+            downloads.lock().await.push(Arc::new(Mutex::new(download)));
         }
     }
 }

@@ -24,7 +24,7 @@ tauri-plugin-shell = "2"
 tauri-plugin-fs = "2"
 tauri-plugin-http = "2"
 tauri-plugin-os = "2"
-pickledb = "0.5.1"
+polodb_core = "5.1.4"
 
 [features]
 # this feature is used for production builds or when `devPath` points to the filesystem
