@@ -3,7 +3,7 @@ use std::fmt::Display;
 use serde::{Deserialize, Serialize};
 use tokio::sync::MutexGuard;
 
-#[derive(Clone, Serialize, Deserialize, Debug)]
+#[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Eq, Hash)]
 pub struct DownloadObj {
     id: u8,
     url: String,
@@ -38,9 +38,13 @@ impl DownloadObj {
         self.filesize
     }
     */
+    
+    pub fn set_id(&mut self, id: u8) {
+        self.id = id;
+    }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub struct DownloadStatus {
     item: DownloadObj,
     paused: bool,
@@ -79,6 +83,12 @@ impl DownloadStatus {
 
     pub fn get_item(&self) -> DownloadObj {
         self.item.clone()
+    }
+}
+
+impl From<String> for DownloadStatus {
+    fn from(item: String) -> Self {
+        serde_json::from_str(&item).unwrap()
     }
 }
 

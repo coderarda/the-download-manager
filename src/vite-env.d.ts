@@ -13,6 +13,7 @@ declare type DownloadInfo = {
 }
 
 declare type DownloadStatus = {
-    obj: DownloadObj,
+    item: DownloadObj,
     paused: boolean,
+    downloading: boolean,
 }

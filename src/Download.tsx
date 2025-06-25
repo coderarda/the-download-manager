@@ -5,7 +5,7 @@ import React, { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 
 export default function Download({ status }: { status: DownloadStatus }) {
-    const val = status.obj;
+    const val: DownloadObj = status.item;
     const [percentage, setPercentage] = useState<number>(0);
     const [pausable, setPausable] = useState(false);
     const [isPaused, setIsPaused] = useState<boolean>(status.paused);

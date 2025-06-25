@@ -13,12 +13,12 @@ import {
     TextField,
     Typography,
 } from "@mui/material";
-import { listen } from "@tauri-apps/api/event";
-import React, { useState, useEffect } from "react";
+import {listen} from "@tauri-apps/api/event";
+import React, {useState, useEffect} from "react";
 import Download from "./Download";
-import { Add, Settings, Alarm } from "@mui/icons-material";
-import { useNavigate } from "react-router-dom";
-import { invoke } from "@tauri-apps/api/core";
+import {Add, Settings, Alarm} from "@mui/icons-material";
+import {useNavigate} from "react-router-dom";
+import {invoke} from "@tauri-apps/api/core";
 import ScheduleDownloadModal from "./ScheduleDownloadModal";
 
 const style = {
@@ -32,8 +32,7 @@ const style = {
     p: 4,
 };
 
-export function Home() {
-    const stored = sessionStorage.getItem("items");
+export function Home({initial}: { initial: DownloadStatus[] }) {
     const [openDial, setOpenDial] = useState(false);
     const [openAddLink, setOpenAddLink] = useState(false);
     const [openAutoAddLink, setOpenAutoAddLink] = useState(false);
@@ -41,43 +40,39 @@ export function Home() {
     const [scheduleDownloadModalVisibility, setScheduleDownloadModalVisibility] =
         useState(false);
     const [filename, setFilename] = useState<string>();
-    const [downloads, setDownloads] = useState<DownloadStatus[]>(
-        stored != null ? (JSON.parse(stored) as DownloadStatus[]) : [],
-    );
-    const [queuedDownload, setQueuedDownload] = useState<DownloadObj | null>(null);
+    const [downloads, setDownloads] = useState<DownloadStatus[]>(initial);
+    const [queuedDownload, setQueuedDownload] = useState<DownloadStatus | null>(null);
     useEffect(() => {
-        const unlisten2 = listen("ondownloadload", (e) => {
-            const initialDownloads = e.payload as DownloadStatus[];
-            setDownloads([...downloads, ...initialDownloads]);
-            sessionStorage.setItem("items", JSON.stringify(downloads));
-        });
-        const unlisten = listen("ondownload", (e) => {
-            let exists = false;
-            const data = e.payload as DownloadObj;
-            downloads.forEach((val) => {
-                if (val.obj.id == data.id) {
-                    exists = true;
-                }
-            });
+        // 1. load initial downloads
+        /* (async () => {
+            const initial = await invoke<DownloadStatus[]>("load_downloads");
+            setDownloads(prev => [...prev, ...initial]);
+        })();
+        */
+        // 2. ondownload listener
+        const unlisten = listen<DownloadStatus>("ondownload", e => {
+            const download = e.payload;
+            console.log("Received download payload:", JSON.stringify(e.payload));
+            const exists = downloads.some(d => d.item.id === download.item.id);
             if (!exists) {
-                setCurrURL(data.url);
-                setFilename(data.title);
                 setOpenAutoAddLink(true);
-                setQueuedDownload(data);
+                setCurrURL(download.item.url);
+                setFilename(download.item.title);
+                setQueuedDownload(download);
             }
-            sessionStorage.setItem("items", JSON.stringify(downloads));
         });
-        const removeUnlisten = listen("download_removed", (e) => {
-            const data = e.payload as number;
-            setDownloads(downloads.filter((val) => val.obj.id != data));
-            sessionStorage.setItem("items", JSON.stringify(downloads));
+
+        // 3. download_removed listener
+        const unlistenRemoved = listen<number>("download_removed", e => {
+            setDownloads(prev => prev.filter(d => d.item.id !== e.payload));
         });
+        sessionStorage.setItem("items", JSON.stringify(downloads));
+        // 4. clean-up
         return () => {
-            unlisten.then((f) => f()).catch((err) => console.log(err));
-            removeUnlisten.then((f) => f()).catch((err) => console.log(err));
-            unlisten2.then((f) => f()).catch((err) => console.log(err));
+            unlisten.then(f => f()).catch(console.error);
+            unlistenRemoved.then(f => f()).catch(console.error);
         };
-    }, []);
+    }, []);      // still only run once on mount
     const navigate = useNavigate();
     return (
         <>
@@ -119,17 +114,19 @@ export function Home() {
                     <Box flexDirection={"row"} paddingTop={2}>
                         <Button
                             variant="contained"
-                            sx={{ marginRight: 2, position: "relative" }}
+                            sx={{marginRight: 2, position: "relative"}}
                             color="primary"
                             onClick={() => {
                                 setOpenAutoAddLink(false);
                                 if (queuedDownload) {
-                                    const newStatus: DownloadStatus = {
-                                        obj: queuedDownload,
-                                        paused: false,
-                                    };
-                                    setDownloads([...downloads, newStatus]);
-                                    invoke("download", { download: queuedDownload });
+                                    setDownloads([...downloads, queuedDownload]);
+                                    invoke("download", {download: queuedDownload})
+                                        .then((value) => {
+                                            console.log(value);
+                                        })
+                                        .catch((err) => {
+                                            console.error(err);
+                                        });
                                 }
                             }}
                         >
@@ -176,7 +173,7 @@ export function Home() {
                     <Box flexDirection={"row"} paddingTop={2}>
                         <Button
                             variant="contained"
-                            sx={{ marginRight: 2, position: "relative" }}
+                            sx={{marginRight: 2, position: "relative"}}
                             color="primary"
                             id="download-btn"
                             onClick={() => {
@@ -188,14 +185,15 @@ export function Home() {
                                             url: currURL,
                                         });
                                         const newStatus: DownloadStatus = {
-                                            obj: obj,
+                                            item: obj,
                                             paused: false,
+                                            downloading: false,
                                         };
                                         console.log("Download info function invoked!");
                                         setDownloads([...downloads, newStatus]);
                                         setFilename(obj.title);
                                         console.log(`Download of filename ${obj.title} started!`);
-                                        invoke("download_manually_from_url", { download: obj });
+                                        await invoke("download_manually_from_url", {download: obj});
                                     })();
                                 }
                             }}
@@ -232,8 +230,10 @@ export function Home() {
                     </TableRow>
                 </TableHead>
                 <TableBody>
-                    {downloads.map((val) => {
-                        return <Download key={val.obj.id} status={val} />;
+                    {downloads.map((val: DownloadStatus) => {
+                        const d: DownloadObj = val.item;
+                        console.log(val.item);
+                        return <Download key={d.id} status={val}/>;
                     })}
                 </TableBody>
             </Table>
@@ -242,14 +242,14 @@ export function Home() {
                 onOpen={() => setOpenDial(true)}
                 onClose={() => setOpenDial(false)}
                 ariaLabel="Actions"
-                sx={{ position: "absolute", right: 16, bottom: 16 }}
-                icon={<SpeedDialIcon />}
+                sx={{position: "absolute", right: 16, bottom: 16}}
+                icon={<SpeedDialIcon/>}
             >
                 <SpeedDialAction
                     key={0}
                     tooltipTitle="Download from URL"
                     tooltipOpen
-                    icon={<Add />}
+                    icon={<Add/>}
                     onClick={() => {
                         setOpenDial(false);
                         setOpenAddLink(true);
@@ -260,7 +260,7 @@ export function Home() {
                     key={1}
                     tooltipTitle="Schedule Download"
                     tooltipOpen
-                    icon={<Alarm />}
+                    icon={<Alarm/>}
                     onClick={() => {
                         setOpenDial(false);
                         setScheduleDownloadModalVisibility(true);
@@ -270,7 +270,7 @@ export function Home() {
                     key={2}
                     tooltipTitle="Settings"
                     tooltipOpen
-                    icon={<Settings />}
+                    icon={<Settings/>}
                     onClick={() => {
                         setOpenDial(false);
                         navigate("/settings");

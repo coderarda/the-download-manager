@@ -14,6 +14,7 @@ import { AppBarComponent } from "./AppBarComponent";
 import { Close, Crop75, Minimize } from "@mui/icons-material";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { platform } from "@tauri-apps/plugin-os";
+import { invoke } from "@tauri-apps/api/core";
 
 const theme = createTheme({
     palette: {
@@ -29,6 +30,13 @@ const theme = createTheme({
     },
 });
 
+const initialDownloads: DownloadStatus[] = [];
+
+(async () => {
+    const arr = await invoke<DownloadStatus[]>("load_downloads");
+    initialDownloads.push(...arr);
+})();
+
 function Root() {
     return (
         <ThemeProvider theme={theme}>
@@ -41,22 +49,24 @@ function Root() {
                     // check if macos then fullscreen
                     if (platform() == "macos") {
                         if (await getCurrentWindow().isFullscreen()) {
-                            getCurrentWindow().setFullscreen(false);
+                            await getCurrentWindow().setFullscreen(false);
                         } else {
-                            getCurrentWindow().setFullscreen(true);
+                            await getCurrentWindow().setFullscreen(true);
                         }
                     } else {
-                        getCurrentWindow().maximize();
+                        await getCurrentWindow().maximize();
                     }
                 }}><Crop75 color="secondary" /></Button>
                 <Button onClick={() => {
-                    getCurrentWindow().close();
+                    (async () => {
+                        await getCurrentWindow().close();
+                    })()
                 }}><Close color="secondary" /></Button>
             </Box>
             <BrowserRouter>
                 <AppBarComponent />
                 <Routes>
-                    <Route index element={<Home />} />
+                    <Route index element={<Home initial={initialDownloads} />} />
                     <Route path="settings" element={<Settings />} />
                 </Routes>
             </BrowserRouter>
