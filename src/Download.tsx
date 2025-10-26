@@ -54,7 +54,7 @@ export default function Download({ status }: { status: DownloadStatus }) {
                                     await invoke("pause_download", { id: val.id });
                                     setIsPaused(true);
                                 } else {
-                                    await invoke("resume", { id: val.id });
+                                    await invoke("resume", { download: status });
                                     setIsPaused(false);
                                 }
                             }

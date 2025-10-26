@@ -36,7 +36,7 @@ const ScheduleDownloadModal = ({ open, handleClose }: { open: boolean, handleClo
     };
 
     return (
-        <Modal open={open} onClose={handleClose}>
+        <Modal open={open}>
             <Box sx={{
                 position: 'absolute',
                 top: '50%',

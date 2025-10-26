@@ -1,6 +1,7 @@
 import {
     Box,
     Button,
+    CircularProgress,
     Modal,
     SpeedDial,
     SpeedDialAction,
@@ -13,13 +14,15 @@ import {
     TextField,
     Typography,
 } from "@mui/material";
-import {listen} from "@tauri-apps/api/event";
-import React, {useState, useEffect} from "react";
+import { listen } from "@tauri-apps/api/event";
+import React, { Suspense, useEffect, useState } from "react";
 import Download from "./Download";
-import {Add, Settings, Alarm} from "@mui/icons-material";
-import {useNavigate} from "react-router-dom";
-import {invoke} from "@tauri-apps/api/core";
+import { Add, Alarm, Settings } from "@mui/icons-material";
+import { useNavigate } from "react-router-dom";
+import { invoke } from "@tauri-apps/api/core";
 import ScheduleDownloadModal from "./ScheduleDownloadModal";
+import { useAppContext } from "./AppContext";
+import { getCurrentWindow } from "@tauri-apps/api/window"
 
 const style = {
     position: "absolute",
@@ -32,7 +35,9 @@ const style = {
     p: 4,
 };
 
-export function Home({initial}: { initial: DownloadStatus[] }) {
+export function Home() {
+    const { downloads, setDownloads } = useAppContext();
+
     const [openDial, setOpenDial] = useState(false);
     const [openAddLink, setOpenAddLink] = useState(false);
     const [openAutoAddLink, setOpenAutoAddLink] = useState(false);
@@ -40,16 +45,36 @@ export function Home({initial}: { initial: DownloadStatus[] }) {
     const [scheduleDownloadModalVisibility, setScheduleDownloadModalVisibility] =
         useState(false);
     const [filename, setFilename] = useState<string>();
-    const [downloads, setDownloads] = useState<DownloadStatus[]>(initial);
     const [queuedDownload, setQueuedDownload] = useState<DownloadStatus | null>(null);
     useEffect(() => {
         // 1. load initial downloads
-        /* (async () => {
-            const initial = await invoke<DownloadStatus[]>("load_downloads");
-            setDownloads(prev => [...prev, ...initial]);
-        })();
-        */
         // 2. ondownload listener
+        (async () => {
+            try {
+                const items: DownloadStatus[] = await invoke("load_downloads");
+                setDownloads(items);
+            } catch (err) {
+                console.error("Error reading downloads.json:", err);
+            }
+        })();
+    /*
+        const win = getCurrentWindow();
+        const unlistenClosing = win.listen("tauri://close-requested", async () => {
+            for (const download of downloads) {
+                if (!download.paused) {
+                    download.paused = true;
+                }
+            }
+            try {
+                await invoke("save_downloads", { downloads });
+                console.log("Downloads saved.");
+            } catch (err) {
+                console.error("Error saving downloads:", err);
+            }
+            console.log("Window is closing, saving downloads...");
+            await win.close()
+        });
+        */
         const unlisten = listen<DownloadStatus>("ondownload", e => {
             const download = e.payload;
             console.log("Received download payload:", JSON.stringify(e.payload));
@@ -66,11 +91,12 @@ export function Home({initial}: { initial: DownloadStatus[] }) {
         const unlistenRemoved = listen<number>("download_removed", e => {
             setDownloads(prev => prev.filter(d => d.item.id !== e.payload));
         });
-        sessionStorage.setItem("items", JSON.stringify(downloads));
+
         // 4. clean-up
         return () => {
             unlisten.then(f => f()).catch(console.error);
             unlistenRemoved.then(f => f()).catch(console.error);
+           // unlistenClosing.then(f => f()).catch(console.error);
         };
     }, []);      // still only run once on mount
     const navigate = useNavigate();
@@ -78,7 +104,6 @@ export function Home({initial}: { initial: DownloadStatus[] }) {
         <>
             <Modal
                 open={openAutoAddLink}
-                onClose={() => setOpenAutoAddLink(false)}
                 aria-labelledby="modal-modal-title"
             >
                 <Box sx={style}>
@@ -128,6 +153,7 @@ export function Home({initial}: { initial: DownloadStatus[] }) {
                                             console.error(err);
                                         });
                                 }
+                                localStorage.setItem("downloads", JSON.stringify(downloads));
                             }}
                         >
                             Download
@@ -146,7 +172,6 @@ export function Home({initial}: { initial: DownloadStatus[] }) {
             </Modal>
             <Modal
                 open={openAddLink}
-                onClose={() => setOpenAddLink(false)}
                 aria-labelledby="modal-modal-title"
             >
                 <Box sx={style}>
@@ -194,6 +219,7 @@ export function Home({initial}: { initial: DownloadStatus[] }) {
                                         setFilename(obj.title);
                                         console.log(`Download of filename ${obj.title} started!`);
                                         await invoke("download_manually_from_url", {download: obj});
+                                        localStorage.setItem("downloads", JSON.stringify(downloads));
                                     })();
                                 }
                             }}
@@ -218,25 +244,27 @@ export function Home({initial}: { initial: DownloadStatus[] }) {
                     setScheduleDownloadModalVisibility(false);
                 }}
             />
-            <Table aria-label="Downloads Table">
-                <TableHead>
-                    <TableRow>
-                        <TableCell>#</TableCell>
-                        <TableCell>Filename</TableCell>
-                        <TableCell>URL</TableCell>
-                        <TableCell>Size</TableCell>
-                        <TableCell>Percentage</TableCell>
-                        <TableCell>Actions</TableCell>
-                    </TableRow>
-                </TableHead>
-                <TableBody>
-                    {downloads.map((val: DownloadStatus) => {
-                        const d: DownloadObj = val.item;
-                        console.log(val.item);
-                        return <Download key={d.id} status={val}/>;
-                    })}
-                </TableBody>
-            </Table>
+            <Suspense fallback={<CircularProgress/>}>
+                <Table aria-label="Downloads Table">
+                    <TableHead>
+                        <TableRow>
+                            <TableCell>#</TableCell>
+                            <TableCell>Filename</TableCell>
+                            <TableCell>URL</TableCell>
+                            <TableCell>Size</TableCell>
+                            <TableCell>Percentage</TableCell>
+                            <TableCell>Actions</TableCell>
+                        </TableRow>
+                    </TableHead>
+                    <TableBody>
+                        {downloads.map((val: DownloadStatus) => {
+                            const d: DownloadObj = val.item;
+                            console.log(val.item);
+                            return <Download key={d.id} status={val}/>;
+                        })}
+                    </TableBody>
+                </Table>
+            </Suspense>
             <SpeedDial
                 open={openDial}
                 onOpen={() => setOpenDial(true)}

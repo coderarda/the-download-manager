@@ -1,6 +1,5 @@
-use std::fmt::Display;
-
 use serde::{Deserialize, Serialize};
+use std::fmt::Display;
 use tokio::sync::MutexGuard;
 
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Eq, Hash)]
@@ -33,12 +32,9 @@ impl DownloadObj {
         self.url.clone()
     }
 
-    /*
-    pub fn get_total_size(&self) -> u64{
+    pub fn get_total_size(&self) -> u64 {
         self.filesize
     }
-    */
-    
     pub fn set_id(&mut self, id: u8) {
         self.id = id;
     }
@@ -49,19 +45,28 @@ pub struct DownloadStatus {
     item: DownloadObj,
     paused: bool,
     downloading: bool,
+    current_sz: u64,
 }
 
 impl DownloadStatus {
+    // Will add size to this later
     pub fn new(item: DownloadObj, paused: bool, downloading: bool) -> Self {
+        let current_sz = 0;
         Self {
             item,
             paused,
             downloading,
+            current_sz,
         }
     }
 
     pub fn from_mutex_guard(guard: &MutexGuard<'_, DownloadStatus>) -> Self {
-        Self { item: guard.get_item(), paused: guard.paused.clone() , downloading: guard.is_downloading() }
+        Self {
+            item: guard.get_item(),
+            paused: guard.paused.clone(),
+            downloading: guard.is_downloading(),
+            current_sz: guard.get_current_sz(),
+        }
     }
 
     pub fn set_pause(&mut self) {
@@ -83,6 +88,14 @@ impl DownloadStatus {
 
     pub fn get_item(&self) -> DownloadObj {
         self.item.clone()
+    }
+
+    pub fn get_current_sz(&self) -> u64 {
+        self.current_sz
+    }
+
+    pub fn set_current_sz(&mut self, sz: u64) {
+        self.current_sz = sz;
     }
 }
 
