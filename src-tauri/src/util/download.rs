@@ -4,14 +4,14 @@ use tokio::sync::MutexGuard;
 
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq, Eq, Hash)]
 pub struct DownloadObj {
-    id: u8,
+    id: u32,
     url: String,
     title: String,
     filesize: u64,
 }
 
 impl DownloadObj {
-    pub fn new(id: u8, url: String, title: String, filesize: u64) -> Self {
+    pub fn new(id: u32, url: String, title: String, filesize: u64) -> Self {
         Self {
             id,
             url,
@@ -24,7 +24,7 @@ impl DownloadObj {
         &self.title
     }
 
-    pub fn get_id(&self) -> u8 {
+    pub fn get_id(&self) -> u32 {
         self.id
     }
 
@@ -35,8 +35,11 @@ impl DownloadObj {
     pub fn get_total_size(&self) -> u64 {
         self.filesize
     }
-    pub fn set_id(&mut self, id: u8) {
+    pub fn set_id(&mut self, id: u32) {
         self.id = id;
+    }
+    pub fn set_file_name(&mut self, name: String) {
+        self.title = name;
     }
 }
 
@@ -46,17 +49,18 @@ pub struct DownloadStatus {
     paused: bool,
     downloading: bool,
     current_sz: u64,
+    #[serde(default)]
+    pausable: bool,
 }
 
 impl DownloadStatus {
-    // Will add size to this later
-    pub fn new(item: DownloadObj, paused: bool, downloading: bool) -> Self {
-        let current_sz = 0;
+    pub fn new(item: DownloadObj, paused: bool, downloading: bool, current_sz: u64) -> Self {
         Self {
             item,
             paused,
             downloading,
             current_sz,
+            pausable: false,
         }
     }
 
@@ -66,6 +70,7 @@ impl DownloadStatus {
             paused: guard.paused.clone(),
             downloading: guard.is_downloading(),
             current_sz: guard.get_current_sz(),
+            pausable: guard.is_pausable(),
         }
     }
 
@@ -97,6 +102,21 @@ impl DownloadStatus {
     pub fn set_current_sz(&mut self, sz: u64) {
         self.current_sz = sz;
     }
+
+    pub fn is_pausable(&self) -> bool {
+        self.pausable
+    }
+
+    pub fn set_pausable(&mut self, pausable: bool) {
+        self.pausable = pausable;
+    }
+
+    pub fn set_item_id(&mut self, id: u32) {
+        self.item.set_id(id);
+    }
+    pub fn set_item_file_name(&mut self, name: String) {
+        self.item.set_file_name(name);
+    }
 }
 
 impl From<String> for DownloadStatus {
@@ -107,12 +127,12 @@ impl From<String> for DownloadStatus {
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct DownloadInfo {
-    id: u8,
+    id: u32,
     chunk_size: u64,
 }
 
 impl DownloadInfo {
-    pub fn new(id: u8, chunk_size: u64) -> Self {
+    pub fn new(id: u32, chunk_size: u64) -> Self {
         Self { id, chunk_size }
     }
 }

@@ -16,4 +16,6 @@ declare type DownloadStatus = {
     item: DownloadObj,
     paused: boolean,
     downloading: boolean,
+    current_sz: number,
+    pausable: boolean,
 }

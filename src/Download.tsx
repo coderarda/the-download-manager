@@ -6,17 +6,15 @@ import { invoke } from "@tauri-apps/api/core";
 
 export default function Download({ status }: { status: DownloadStatus }) {
     const val: DownloadObj = status.item;
-    const [percentage, setPercentage] = useState<number>(0);
-    const [pausable, setPausable] = useState(false);
+    const [percentage, setPercentage] = useState<number>(status.current_sz);
+    const [pausable, setPausable] = useState(status.pausable);
     const [isPaused, setIsPaused] = useState<boolean>(status.paused);
     let completePercent = parseInt(((percentage / val.filesize) * 100).toFixed());
     useEffect(() => {
         const unlisten = listen("downloadpauseinfo", (e) => {
-            const data = e.payload as boolean;
-            if (data) {
-                setPausable(true);
-            } else {
-                setPausable(false);
+            const [id, canPause] = e.payload as [number, boolean];
+            if (id === val.id) {
+                setPausable(canPause);
             }
         });
         const f = listen("ondownloadupdate", (e) => {
@@ -35,7 +33,7 @@ export default function Download({ status }: { status: DownloadStatus }) {
             <TableCell>{val.id}</TableCell>
             <TableCell>{val.title}</TableCell>
             <TableCell>{val.url}</TableCell>
-            <TableCell>{(val.filesize / (1024 * 1024)).toFixed()} MB</TableCell>
+            <TableCell>{(status.current_sz / (1024 * 1024)).toFixed()} MB</TableCell>
             <TableCell>
                 {completePercent == 100 ? "Complete" : "%" + completePercent} 
                 <LinearProgress variant="determinate" value={completePercent}/>

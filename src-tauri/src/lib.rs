@@ -1,8 +1,7 @@
 use actix_web::{post, web::Data, App, HttpResponse, HttpServer, Responder};
 use regex::Regex;
 use std::fs::File;
-use std::io::{Read, Seek, SeekFrom};
-use std::path::Path;
+use std::io::Read;
 use std::{io::Write, sync::Arc};
 use tauri::http::header::{ACCEPT_RANGES, RANGE};
 use tauri::{AppHandle, Emitter, Manager};
@@ -20,40 +19,77 @@ struct WebServerState {
 }
 
 #[tauri::command]
-async fn load_downloads(handle: AppHandle) -> Vec<DownloadStatus> {
+async fn load_downloads(handle: AppHandle) -> Result<Vec<DownloadStatus>, String> {
     let p = handle.path().app_data_dir().unwrap().join("downloads.json");
     println!("{:?}", p);
     let mut data = String::new();
-    let f: Option<File>;
-    if !p.exists() {
-        let dir = p.parent().unwrap();
-        std::fs::create_dir(Path::new(&dir)).unwrap();
-        f = Some(File::create(p).unwrap());
+    if p.exists() {
+        match std::fs::OpenOptions::new().read(true).open(&p) {
+            Ok(mut file) => {
+                if let Err(e) = file.read_to_string(&mut data) {
+                    return Err(format!("Failed to read downloads.json: {}", e));
+                }
+            }
+            Err(e) => {
+                return Err(format!("Failed to open downloads.json: {}", e));
+            }
+        }
     } else {
-        f = Some(std::fs::OpenOptions::new().read(true).open(p).unwrap());
-    }
-    if let Some(mut file) = f {
-        file.read_to_string(&mut data).unwrap();
+        if let Some(dir) = p.parent() {
+            let _ = std::fs::create_dir_all(dir);
+        }
     }
     if data.is_empty() {
         data = "[]".to_string();
     }
-    serde_json::from_str(&data).unwrap()
+    let downloads: Vec<DownloadStatus> = match serde_json::from_str(&data) {
+        Ok(d) => d,
+        Err(e) => return Err(format!("Failed to parse downloads.json: {}", e)),
+    };
+
+    let state: tauri::State<AppDownloadManager> = handle.state();
+    let dw_arc = state.get_downloads();
+    let mut dw_list = dw_arc.lock().await;
+    dw_list.clear();
+    let mut max_id: u32 = 0;
+    let download_dir = handle.path().download_dir().unwrap();
+    for dw in &downloads {
+        let mut dw_clone = dw.clone();
+        let filepath = download_dir.join(dw_clone.get_item().get_file_name());
+        if let Ok(metadata) = std::fs::metadata(&filepath) {
+            let on_disk = metadata.len();
+            if on_disk > 0 {
+                dw_clone.set_current_sz(on_disk);
+            }
+        }
+        let wrapped = Arc::new(Mutex::new(dw_clone.clone()));
+        let id = dw.get_item().get_id();
+        if id >= max_id {
+            max_id = id + 1;
+        }
+        dw_list.push(wrapped);
+        handle.emit("downloadfirstupdate", &dw_clone).unwrap();
+    }
+    state.set_next_id(max_id);
+
+    Ok(downloads)
 }
 
 async fn save_downloads(
     handle: AppHandle,
     downloads: Arc<Mutex<Vec<Arc<Mutex<DownloadStatus>>>>>,
 ) -> Result<(), String> {
+    let path = handle.path().app_data_dir().unwrap().join("downloads.json");
     let mut f = std::fs::OpenOptions::new()
+        .create(true)
         .write(true)
         .truncate(true)
-        .open(handle.path().app_data_dir().unwrap().join("downloads.json"))
-        .unwrap();
-    f.seek(SeekFrom::Start(0)).unwrap();
+        .open(&path)
+        .map_err(|e| format!("Failed to open file: {}", e))?;
     let new_downloads = get_from_arc_vec(downloads).await;
-    f.write_all(serde_json::to_string(&new_downloads).unwrap().as_bytes())
-        .unwrap();
+    let json = serde_json::to_string(&new_downloads).map_err(|e| format!("Failed to serialize: {}", e))?;
+    f.write_all(json.as_bytes())
+        .map_err(|e| format!("Failed to write: {}", e))?;
     Ok(())
 }
 
@@ -76,7 +112,7 @@ async fn get_download_info(
         .unwrap()
         .parse::<u64>()
         .unwrap();
-    let id = state.get_downloads().lock().await.len() as u8;
+    let id = state.get_next_id();
     let re = Regex::new(r"[^/]+$").unwrap();
     let title = re
         .find(&url)
@@ -86,7 +122,7 @@ async fn get_download_info(
 }
 
 #[tauri::command]
-async fn pause_download(state: tauri::State<'_, AppDownloadManager>, id: u8) -> Result<(), String> {
+async fn pause_download(state: tauri::State<'_, AppDownloadManager>, id: u32) -> Result<(), String> {
     for d in state.get_downloads().lock().await.iter_mut() {
         if d.lock().await.get_item().get_id() == id {
             d.lock().await.set_pause();
@@ -102,28 +138,74 @@ async fn resume(
     state: tauri::State<'_, AppDownloadManager>,
     download: DownloadStatus,
 ) -> Result<(), String> {
-    for d in state.get_downloads().lock().await.iter() {
-        if d.lock().await.get_item().get_id() == download.get_item().get_id() {
-            d.lock().await.set_downloading();
-            tokio::spawn(download_item(d.clone(), app_handle));
-            break;
-        } else {
-            tokio::spawn(download_item(Arc::new(Mutex::new(download)), app_handle));
+    let dw_arc = state.get_downloads();
+    let mut dw_list = dw_arc.lock().await;
+    let target_id = download.get_item().get_id();
+    let mut found = None;
+    for d in dw_list.iter() {
+        if d.lock().await.get_item().get_id() == target_id {
+            found = Some(d.clone());
             break;
         }
+    }
+    if let Some(d) = found {
+        d.lock().await.set_downloading();
+        tokio::spawn(download_item(d, app_handle));
+    } else {
+        let wrapped = Arc::new(Mutex::new(download));
+        tokio::spawn(download_item(wrapped.clone(), app_handle));
+        dw_list.push(wrapped);
     }
     Ok(())
 }
 
 #[tauri::command]
-async fn remove_download(handle: AppHandle, id: u8) -> Result<(), String> {
-    handle
-        .state::<AppDownloadManager>()
-        .get_downloads()
-        .lock()
-        .await
-        .remove(id as usize);
+async fn remove_download(handle: AppHandle, id: u32) -> Result<(), String> {
+    let dw_arc = handle.state::<AppDownloadManager>().get_downloads();
+    let file_name: Option<String>;
+    {
+        let mut dw_list = dw_arc.lock().await;
+        let mut idx = None;
+        for (i, d) in dw_list.iter().enumerate() {
+            if d.lock().await.get_item().get_id() == id {
+                idx = Some(i);
+                break;
+            }
+        }
+        if let Some(i) = idx {
+            file_name = Some(dw_list[i].lock().await.get_item().get_file_name().clone());
+            dw_list.remove(i);
+            let mut dws = Vec::new();
+            for d in dw_list.iter() {
+                let dw = DownloadStatus::from_mutex_guard(&d.lock().await);
+                dws.push(dw);
+            }
+            let json =
+                serde_json::to_string(&dws).map_err(|e| format!("Failed to serialize: {}", e))?;
+            let path = handle
+                .path()
+                .app_data_dir()
+                .unwrap()
+                .join("downloads.json");
+            let mut f = std::fs::OpenOptions::new()
+                .create(true)
+                .write(true)
+                .truncate(true)
+                .open(&path)
+                .map_err(|e| format!("Failed to open file: {}", e))?;
+            f.write_all(json.as_bytes())
+                .map_err(|e| format!("Failed to write: {}", e))?;
+        } else {
+            file_name = None;
+        }
+    }
     handle.emit("download_removed", id).unwrap();
+    if let Some(name) = file_name {
+        let filepath = handle.path().download_dir().unwrap().join(name);
+        if filepath.exists() {
+            let _ = std::fs::remove_file(&filepath);
+        }
+    }
     Ok(())
 }
 
@@ -137,6 +219,7 @@ async fn download_manually_from_url(
         download.clone(),
         false,
         false,
+        0,
     )));
     state
         .get_downloads()
@@ -158,11 +241,22 @@ async fn download(
     handle: AppHandle,
     download: DownloadStatus,
 ) -> Result<(), String> {
-    for d in state.get_downloads().lock().await.iter_mut() {
-        if d.lock().await.get_item().get_id() == download.get_item().get_id() {
-            tokio::spawn(download_item(d.clone(), handle.clone()));
+    let dw_arc = state.get_downloads();
+    let mut dw_list = dw_arc.lock().await;
+    let target_id = download.get_item().get_id();
+    let mut found = None;
+    for d in dw_list.iter() {
+        if d.lock().await.get_item().get_id() == target_id {
+            found = Some(d.clone());
             break;
         }
+    }
+    if let Some(d) = found {
+        tokio::spawn(download_item(d, handle));
+    } else {
+        let wrapped = Arc::new(Mutex::new(download));
+        tokio::spawn(download_item(wrapped.clone(), handle));
+        dw_list.push(wrapped);
     }
     Ok(())
 }
@@ -218,6 +312,8 @@ async fn download_item(
             filepath = handle.path().download_dir().unwrap().join(new_name);
             counter += 1;
         }
+        let new_name = filepath.file_name().unwrap().to_string_lossy().to_string();
+        status.lock().await.set_item_file_name(new_name);
     }
     let file: Option<File>;
     if filepath.exists() {
@@ -235,25 +331,38 @@ async fn download_item(
 
     // Set Range request header to resume download
     if head.headers().contains_key(ACCEPT_RANGES) {
-        handle.emit("downloadpauseinfo", true).unwrap();
+        status.lock().await.set_pausable(true);
+        handle.emit("downloadpauseinfo", (id, true)).unwrap();
+    } else {
+        status.lock().await.set_pausable(false);
+        handle.emit("downloadpauseinfo", (id, false)).unwrap();
+    }
+    let mut len = 0;
+    if let Ok(metadata) = f.metadata() {
+        if metadata.len() > 0 {
+            len = metadata.len();
+        }
     }
     let mut req = client
         .get(status.lock().await.get_item().get_url())
-        .header(RANGE, format!("bytes={}-", f.metadata().unwrap().len()))
+        .header(RANGE, format!("bytes={}-", len))
         .send()
         .await?;
 
     let mut curr_sz = status.lock().await.get_current_sz();
     let mut count = 0;
+    let mut was_paused = false;
 
     while let Some(buf) = req.chunk().await? {
         if status.lock().await.is_paused() {
             status.lock().await.set_current_sz(curr_sz);
+            was_paused = true;
             break;
         }
 
         f.write_all(&buf).unwrap();
         curr_sz += buf.len() as u64;
+        status.lock().await.set_current_sz(curr_sz);
 
         if count % 50 == 0 {
             let update = DownloadInfo::new(id, curr_sz);
@@ -261,16 +370,18 @@ async fn download_item(
         }
         count += 1;
     }
+
+    if !was_paused {
+        let total = status.lock().await.get_item().get_total_size();
+        status.lock().await.set_current_sz(total);
+    }
     Ok(())
 }
 
 async fn push_download_to_vec(download: &Arc<Mutex<DownloadStatus>>, handle: AppHandle) {
     let tauri_state: tauri::State<AppDownloadManager> = handle.state();
-    download
-        .lock()
-        .await
-        .get_item()
-        .set_id(tauri_state.get_downloads().lock().await.len() as u8);
+    let id = tauri_state.get_next_id();
+    download.lock().await.set_item_id(id);
 
     tauri_state
         .get_downloads()
@@ -291,7 +402,7 @@ async fn listen_for_downloads(
     data: Data<WebServerState>,
 ) -> std::io::Result<impl Responder> {
     let new_data = serde_json::from_str::<DownloadObj>(&dw)?;
-    let download = Arc::new(Mutex::new(DownloadStatus::new(new_data, false, false)));
+    let download = Arc::new(Mutex::new(DownloadStatus::new(new_data, false, false, 0)));
     push_download_to_vec(&download, data.handle.clone()).await;
     Ok(HttpResponse::Ok())
 }
@@ -316,18 +427,26 @@ pub fn run() {
         .setup(|app| {
             let h = app.handle().clone();
             // Listen for window close event
-            let main_window = app.get_window("main");
+            let main_window = app.handle().get_window("main");
             if let Some(window) = main_window {
                 let another_handle = h.clone();
                 window.on_window_event(move |event| {
                     if let tauri::WindowEvent::CloseRequested { .. } = event {
                         println!("App is closing. Perform cleanup here.");
-                        let value = another_handle.clone();
-
-                        tauri::async_runtime::spawn(async move {
-                            let downloads = value.state::<AppDownloadManager>().get_downloads();
-                            save_downloads(value.clone(), downloads).await.unwrap();
+                        let handle = another_handle.clone();
+                        let downloads_arc =
+                            handle.state::<AppDownloadManager>().get_downloads();
+                        let downloads = tauri::async_runtime::block_on(async {
+                            get_from_arc_vec(downloads_arc).await
                         });
+                        let path = handle
+                            .path()
+                            .app_data_dir()
+                            .unwrap()
+                            .join("downloads.json");
+                        if let Ok(json) = serde_json::to_string(&downloads) {
+                            let _ = std::fs::write(&path, json);
+                        }
                     }
                 });
             }

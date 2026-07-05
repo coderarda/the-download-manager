@@ -213,6 +213,8 @@ export function Home() {
                                             item: obj,
                                             paused: false,
                                             downloading: false,
+                                            current_sz: 0,
+                                            pausable: false,
                                         };
                                         console.log("Download info function invoked!");
                                         setDownloads([...downloads, newStatus]);

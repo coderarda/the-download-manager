@@ -1,4 +1,5 @@
-import React, { createContext, useContext, useState, ReactNode } from "react";
+import React, { createContext, useContext, useState, ReactNode, useEffect } from "react";
+import { listen } from "@tauri-apps/api/event";
 
 // Define types for your state
 interface AppState {
@@ -12,6 +13,23 @@ const AppContext = createContext<AppState | undefined>(undefined);
 // Create a provider component
 export const AppProvider = ({ children }: { children: ReactNode }) => {
     const [downloads, setDownloads] = useState<DownloadStatus[]>([]);
+
+    useEffect(() => {
+        const unlisten = listen("downloadfirstupdate", (e) => {
+            const data = e.payload as DownloadStatus;
+            downloads.forEach((d) => {
+                if (d.item.id == data.item.id) {
+                    let idx = downloads.indexOf(d);
+                    downloads[idx] = data;
+                    setDownloads([...downloads]);
+                }
+            })
+        })
+        return () => {
+            unlisten.then((fun) => fun()).catch((err) => console.log(err));
+        }
+    }, []);
+
 
     return (
         <AppContext.Provider value={{ downloads, setDownloads }}>
