@@ -2,7 +2,7 @@ use actix_web::{post, web::Data, App, HttpResponse, HttpServer, Responder};
 use regex::Regex;
 use std::fs::File;
 use std::io::Read;
-use std::{io::Write, sync::Arc};
+use std::{io::Write, path::{Path, PathBuf}, sync::Arc};
 use tauri::http::header::{ACCEPT_RANGES, RANGE};
 use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_http::reqwest;
@@ -75,22 +75,34 @@ async fn load_downloads(handle: AppHandle) -> Result<Vec<DownloadStatus>, String
     Ok(downloads)
 }
 
-async fn save_downloads(
-    handle: AppHandle,
-    downloads: Arc<Mutex<Vec<Arc<Mutex<DownloadStatus>>>>>,
-) -> Result<(), String> {
-    let path = handle.path().app_data_dir().unwrap().join("downloads.json");
-    let mut f = std::fs::OpenOptions::new()
-        .create(true)
-        .write(true)
-        .truncate(true)
-        .open(&path)
-        .map_err(|e| format!("Failed to open file: {}", e))?;
-    let new_downloads = get_from_arc_vec(downloads).await;
-    let json = serde_json::to_string(&new_downloads).map_err(|e| format!("Failed to serialize: {}", e))?;
-    f.write_all(json.as_bytes())
-        .map_err(|e| format!("Failed to write: {}", e))?;
+fn persist_downloads(path: &Path, downloads: &[DownloadStatus]) -> Result<(), String> {
+    let json = serde_json::to_string(downloads).map_err(|e| format!("Failed to serialize: {}", e))?;
+    std::fs::write(path, json).map_err(|e| format!("Failed to write: {}", e))?;
     Ok(())
+}
+
+async fn find_download_by_id(
+    downloads: &[Arc<Mutex<DownloadStatus>>],
+    target_id: u32,
+) -> Option<Arc<Mutex<DownloadStatus>>> {
+    for download in downloads {
+        if download.lock().await.get_item().get_id() == target_id {
+            return Some(download.clone());
+        }
+    }
+    None
+}
+
+async fn find_download_index_by_id(
+    downloads: &[Arc<Mutex<DownloadStatus>>],
+    target_id: u32,
+) -> Option<usize> {
+    for (index, download) in downloads.iter().enumerate() {
+        if download.lock().await.get_item().get_id() == target_id {
+            return Some(index);
+        }
+    }
+    None
 }
 
 #[tauri::command]
@@ -141,13 +153,7 @@ async fn resume(
     let dw_arc = state.get_downloads();
     let mut dw_list = dw_arc.lock().await;
     let target_id = download.get_item().get_id();
-    let mut found = None;
-    for d in dw_list.iter() {
-        if d.lock().await.get_item().get_id() == target_id {
-            found = Some(d.clone());
-            break;
-        }
-    }
+    let found = find_download_by_id(&dw_list, target_id).await;
     if let Some(d) = found {
         d.lock().await.set_downloading();
         tokio::spawn(download_item(d, app_handle));
@@ -165,13 +171,7 @@ async fn remove_download(handle: AppHandle, id: u32) -> Result<(), String> {
     let file_name: Option<String>;
     {
         let mut dw_list = dw_arc.lock().await;
-        let mut idx = None;
-        for (i, d) in dw_list.iter().enumerate() {
-            if d.lock().await.get_item().get_id() == id {
-                idx = Some(i);
-                break;
-            }
-        }
+        let idx = find_download_index_by_id(&dw_list, id).await;
         if let Some(i) = idx {
             file_name = Some(dw_list[i].lock().await.get_item().get_file_name().clone());
             dw_list.remove(i);
@@ -180,21 +180,12 @@ async fn remove_download(handle: AppHandle, id: u32) -> Result<(), String> {
                 let dw = DownloadStatus::from_mutex_guard(&d.lock().await);
                 dws.push(dw);
             }
-            let json =
-                serde_json::to_string(&dws).map_err(|e| format!("Failed to serialize: {}", e))?;
             let path = handle
                 .path()
                 .app_data_dir()
                 .unwrap()
                 .join("downloads.json");
-            let mut f = std::fs::OpenOptions::new()
-                .create(true)
-                .write(true)
-                .truncate(true)
-                .open(&path)
-                .map_err(|e| format!("Failed to open file: {}", e))?;
-            f.write_all(json.as_bytes())
-                .map_err(|e| format!("Failed to write: {}", e))?;
+            persist_downloads(&path, &dws)?;
         } else {
             file_name = None;
         }
@@ -244,13 +235,7 @@ async fn download(
     let dw_arc = state.get_downloads();
     let mut dw_list = dw_arc.lock().await;
     let target_id = download.get_item().get_id();
-    let mut found = None;
-    for d in dw_list.iter() {
-        if d.lock().await.get_item().get_id() == target_id {
-            found = Some(d.clone());
-            break;
-        }
-    }
+    let found = find_download_by_id(&dw_list, target_id).await;
     if let Some(d) = found {
         tokio::spawn(download_item(d, handle));
     } else {
@@ -261,90 +246,136 @@ async fn download(
     Ok(())
 }
 
+trait DownloadEventEmitter {
+    fn emit_download_pause_info(&self, id: u32, pausable: bool);
+    fn emit_download_update(&self, update: DownloadInfo);
+}
+
+impl DownloadEventEmitter for AppHandle {
+    fn emit_download_pause_info(&self, id: u32, pausable: bool) {
+        self.emit("downloadpauseinfo", (id, pausable)).unwrap();
+    }
+
+    fn emit_download_update(&self, update: DownloadInfo) {
+        self.emit("ondownloadupdate", update).unwrap();
+    }
+}
+
+fn split_file_name(file_name: &str) -> (&str, Option<&str>) {
+    file_name
+        .rsplit_once('.')
+        .map_or((file_name, None), |(stem, extension)| {
+            (stem, Some(extension))
+        })
+}
+
+fn split_counter_suffix(file_stem: &str) -> Option<(&str, u32)> {
+    if !file_stem.ends_with(')') {
+        return None;
+    }
+
+    let start_idx = file_stem.rfind('(')?;
+    let number = file_stem[start_idx + 1..file_stem.len() - 1].parse().ok()?;
+    Some((&file_stem[..start_idx], number))
+}
+
+fn build_indexed_file_name(original_file_name: &str, counter: u32) -> String {
+    let (file_stem, extension) = split_file_name(original_file_name);
+    let indexed_stem = if let Some((base_stem, current_number)) = split_counter_suffix(file_stem) {
+        format!("{}({})", base_stem, current_number + counter)
+    } else {
+        format!("{}({})", file_stem, counter)
+    };
+
+    match extension {
+        Some(ext) => format!("{}.{}", indexed_stem, ext),
+        None => indexed_stem,
+    }
+}
+
+fn resolve_available_filepath(download_dir: &Path, original_file_name: &str) -> PathBuf {
+    let mut counter = 1;
+    loop {
+        let candidate = download_dir.join(build_indexed_file_name(original_file_name, counter));
+        if !candidate.exists() {
+            return candidate;
+        }
+        counter += 1;
+    }
+}
+
+fn resolve_download_filepath(download_dir: &Path, item: &DownloadObj) -> (PathBuf, Option<String>) {
+    let filepath = download_dir.join(item.get_file_name());
+
+    if !filepath.exists() {
+        return (filepath, None);
+    }
+
+    let existing_len_matches_total = std::fs::metadata(&filepath)
+        .map(|metadata| metadata.len() == item.get_total_size())
+        .unwrap_or(false);
+
+    if !existing_len_matches_total {
+        return (filepath, None);
+    }
+
+    let new_path = resolve_available_filepath(download_dir, item.get_file_name());
+    let new_name = new_path.file_name().map(|name| name.to_string_lossy().to_string());
+    (new_path, new_name)
+}
+
+fn open_download_file(filepath: &Path) -> File {
+    let mut file_opts = std::fs::OpenOptions::new();
+    if filepath.exists() {
+        file_opts.append(true).open(filepath).unwrap()
+    } else {
+        file_opts.create(true).write(true).open(filepath).unwrap()
+    }
+}
+
+fn read_file_size(file: &File) -> u64 {
+    file.metadata().map(|metadata| metadata.len()).unwrap_or(0)
+}
+
 async fn download_item(
     status: Arc<Mutex<DownloadStatus>>,
     handle: AppHandle,
 ) -> Result<(), reqwest::Error> {
+    let download_dir = handle.path().download_dir().unwrap();
+    download_item_with_emitter(status, download_dir, &handle).await
+}
+
+async fn download_item_with_emitter<E: DownloadEventEmitter>(
+    status: Arc<Mutex<DownloadStatus>>,
+    download_dir: PathBuf,
+    emitter: &E,
+) -> Result<(), reqwest::Error> {
     println!("Download starting...");
-    let mut filepath = handle
-        .path()
-        .download_dir()
-        .unwrap()
-        .join(status.lock().await.get_item().get_file_name());
-    let id = status.lock().await.get_item().get_id();
-    status.lock().await.set_downloading();
-    let mut file_opts = std::fs::OpenOptions::new();
-    let dw_item = status.lock().await.get_item();
+    let download_item = {
+        let mut status_guard = status.lock().await;
+        status_guard.set_downloading();
+        status_guard.get_item()
+    };
+    let id = download_item.get_id();
+    let (filepath, updated_name) = resolve_download_filepath(&download_dir, &download_item);
 
-    let client = reqwest::Client::new();
-    let head = client
-        .head(status.lock().await.get_item().get_url())
-        .send()
-        .await?;
-
-    let mut counter = 1;
-    if filepath.exists()
-        && std::fs::metadata(&filepath).unwrap().len()
-            == status.lock().await.get_item().get_total_size()
-    {
-        while std::fs::metadata(&filepath).is_ok() {
-            let file_stem = dw_item
-                .get_file_name()
-                .rsplit_once('.')
-                .map_or(dw_item.get_file_name().as_str(), |(stem, _)| stem);
-            let extension = dw_item.get_file_name().rsplit_once('.').map(|(_, ext)| ext);
-
-            // Check if the filename already ends with a number in parentheses
-            let new_stem = if let Some(captures) =
-                Regex::new(r"^(.*)\((\d+)\)$").unwrap().captures(file_stem)
-            {
-                let base_stem = captures.get(1).unwrap().as_str();
-                let current_number: u32 = captures.get(2).unwrap().as_str().parse().unwrap();
-                format!("{}({})", base_stem, current_number + 1)
-            } else {
-                format!("{}({})", file_stem, counter)
-            };
-
-            let new_name = match extension {
-                Some(ext) => format!("{}.{}", new_stem, ext),
-                None => new_stem,
-            };
-            filepath = handle.path().download_dir().unwrap().join(new_name);
-            counter += 1;
-        }
-        let new_name = filepath.file_name().unwrap().to_string_lossy().to_string();
+    if let Some(new_name) = updated_name {
         status.lock().await.set_item_file_name(new_name);
     }
-    let file: Option<File>;
-    if filepath.exists() {
-        file = Some(file_opts.append(true).open(&filepath).unwrap());
-    } else {
-        file = Some(file_opts.create(true).write(true).open(&filepath).unwrap());
-    }
 
-    let mut f = match file {
-        Some(f) => f,
-        None => {
-            panic!("File could not be created/opened");
-        }
-    };
+    let mut f = open_download_file(&filepath);
+
+    let client = reqwest::Client::new();
+    let head = client.head(download_item.get_url()).send().await?;
 
     // Set Range request header to resume download
-    if head.headers().contains_key(ACCEPT_RANGES) {
-        status.lock().await.set_pausable(true);
-        handle.emit("downloadpauseinfo", (id, true)).unwrap();
-    } else {
-        status.lock().await.set_pausable(false);
-        handle.emit("downloadpauseinfo", (id, false)).unwrap();
-    }
-    let mut len = 0;
-    if let Ok(metadata) = f.metadata() {
-        if metadata.len() > 0 {
-            len = metadata.len();
-        }
-    }
+    let is_pausable = head.headers().contains_key(ACCEPT_RANGES);
+    status.lock().await.set_pausable(is_pausable);
+    emitter.emit_download_pause_info(id, is_pausable);
+
+    let len = read_file_size(&f);
     let mut req = client
-        .get(status.lock().await.get_item().get_url())
+        .get(download_item.get_url())
         .header(RANGE, format!("bytes={}-", len))
         .send()
         .await?;
@@ -366,13 +397,13 @@ async fn download_item(
 
         if count % 50 == 0 {
             let update = DownloadInfo::new(id, curr_sz);
-            handle.emit("ondownloadupdate", update).unwrap();
+            emitter.emit_download_update(update);
         }
         count += 1;
     }
 
     if !was_paused {
-        let total = status.lock().await.get_item().get_total_size();
+        let total = download_item.get_total_size();
         status.lock().await.set_current_sz(total);
     }
     Ok(())
@@ -444,9 +475,7 @@ pub fn run() {
                             .app_data_dir()
                             .unwrap()
                             .join("downloads.json");
-                        if let Ok(json) = serde_json::to_string(&downloads) {
-                            let _ = std::fs::write(&path, json);
-                        }
+                        let _ = persist_downloads(&path, &downloads);
                     }
                 });
             }
@@ -477,4 +506,220 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("Error while running tauri application");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        download_item_with_emitter, DownloadEventEmitter, DownloadInfo, DownloadObj, DownloadStatus,
+    };
+    use std::io::{Read, Write};
+    use std::net::TcpListener;
+    use std::path::PathBuf;
+    use std::sync::{Arc, Mutex as StdMutex};
+    use std::thread::JoinHandle;
+    use std::time::{SystemTime, UNIX_EPOCH};
+    use tokio::sync::Mutex;
+
+    #[derive(Default)]
+    struct TestEventEmitter {
+        pause_events: StdMutex<Vec<(u32, bool)>>,
+        update_events: StdMutex<Vec<String>>,
+    }
+
+    impl DownloadEventEmitter for TestEventEmitter {
+        fn emit_download_pause_info(&self, id: u32, pausable: bool) {
+            self.pause_events.lock().unwrap().push((id, pausable));
+        }
+
+        fn emit_download_update(&self, update: DownloadInfo) {
+            self.update_events.lock().unwrap().push(update.to_string());
+        }
+    }
+
+    fn create_temp_dir(prefix: &str) -> PathBuf {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!("{}_{}", prefix, nanos));
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    fn spawn_test_server(
+        head_content_length: usize,
+        get_body: Vec<u8>,
+        includes_accept_ranges: bool,
+    ) -> (String, Arc<StdMutex<Vec<String>>>, JoinHandle<()>) {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        let requests = Arc::new(StdMutex::new(Vec::<String>::new()));
+        let requests_for_thread = requests.clone();
+
+        let handle = std::thread::spawn(move || {
+            for _ in 0..2 {
+                let (mut stream, _) = listener.accept().unwrap();
+                let mut buf = [0_u8; 2048];
+                let bytes_read = stream.read(&mut buf).unwrap();
+                let request = String::from_utf8_lossy(&buf[..bytes_read]);
+                requests_for_thread.lock().unwrap().push(request.to_string());
+
+                let accept_ranges_header = if includes_accept_ranges {
+                    "Accept-Ranges: bytes\r\n"
+                } else {
+                    ""
+                };
+
+                if request.starts_with("HEAD") {
+                    let response = format!(
+                        "HTTP/1.1 200 OK\r\nContent-Length: {}\r\n{}Connection: close\r\n\r\n",
+                        head_content_length,
+                        accept_ranges_header
+                    );
+                    stream.write_all(response.as_bytes()).unwrap();
+                } else if request.starts_with("GET") {
+                    let headers = format!(
+                        "HTTP/1.1 200 OK\r\nContent-Length: {}\r\n{}Connection: close\r\n\r\n",
+                        get_body.len(),
+                        accept_ranges_header
+                    );
+                    stream.write_all(headers.as_bytes()).unwrap();
+                    stream.write_all(&get_body).unwrap();
+                } else {
+                    panic!("unexpected request: {}", request);
+                }
+            }
+        });
+
+        (format!("http://{}/test.bin", addr), requests, handle)
+    }
+
+    #[tokio::test]
+    async fn download_item_writes_file_and_updates_status() {
+        let payload = b"hello from download item test".to_vec();
+        let (url, _requests, server_handle) =
+            spawn_test_server(payload.len(), payload.clone(), true);
+        let temp_dir = create_temp_dir("download_item_test");
+        let file_name = "test.bin".to_string();
+        let status = Arc::new(Mutex::new(DownloadStatus::new(
+            DownloadObj::new(42, url, file_name.clone(), payload.len() as u64),
+            false,
+            false,
+            0,
+        )));
+        let emitter = TestEventEmitter::default();
+
+        let result = download_item_with_emitter(status.clone(), temp_dir.clone(), &emitter).await;
+
+        server_handle.join().unwrap();
+        assert!(result.is_ok());
+
+        let written_file = temp_dir.join(file_name);
+        assert_eq!(std::fs::read(&written_file).unwrap(), payload);
+
+        let status_guard = status.lock().await;
+        assert!(status_guard.is_downloading());
+        assert_eq!(status_guard.get_current_sz(), payload.len() as u64);
+        assert!(status_guard.is_pausable());
+        drop(status_guard);
+
+        let pause_events = emitter.pause_events.lock().unwrap();
+        assert_eq!(pause_events.as_slice(), &[(42, true)]);
+        drop(pause_events);
+
+        let update_events = emitter.update_events.lock().unwrap();
+        assert_eq!(update_events.len(), 1);
+        drop(update_events);
+
+        std::fs::remove_file(written_file).unwrap();
+        std::fs::remove_dir_all(temp_dir).unwrap();
+    }
+
+    #[tokio::test]
+    async fn download_item_sets_not_pausable_without_accept_ranges() {
+        let payload = b"download without range support".to_vec();
+        let (url, _requests, server_handle) =
+            spawn_test_server(payload.len(), payload.clone(), false);
+        let temp_dir = create_temp_dir("download_item_non_pausable_test");
+        let file_name = "non_pausable_test.bin".to_string();
+        let status = Arc::new(Mutex::new(DownloadStatus::new(
+            DownloadObj::new(7, url, file_name.clone(), payload.len() as u64),
+            false,
+            false,
+            0,
+        )));
+        let emitter = TestEventEmitter::default();
+
+        let result = download_item_with_emitter(status.clone(), temp_dir.clone(), &emitter).await;
+
+        server_handle.join().unwrap();
+        assert!(result.is_ok());
+
+        let written_file = temp_dir.join(file_name);
+        assert_eq!(std::fs::read(&written_file).unwrap(), payload);
+
+        let status_guard = status.lock().await;
+        assert!(status_guard.is_downloading());
+        assert_eq!(status_guard.get_current_sz(), payload.len() as u64);
+        assert!(!status_guard.is_pausable());
+        drop(status_guard);
+
+        let pause_events = emitter.pause_events.lock().unwrap();
+        assert_eq!(pause_events.as_slice(), &[(7, false)]);
+        drop(pause_events);
+
+        std::fs::remove_file(written_file).unwrap();
+        std::fs::remove_dir_all(temp_dir).unwrap();
+    }
+
+    #[tokio::test]
+    async fn download_item_uses_file_size_for_range_and_appends_existing_file() {
+        let initial_bytes = b"hello";
+        let appended_bytes = b" world";
+        let expected_content = [initial_bytes.as_slice(), appended_bytes.as_slice()].concat();
+
+        let (url, requests, server_handle) =
+            spawn_test_server(expected_content.len(), appended_bytes.to_vec(), true);
+        let temp_dir = create_temp_dir("download_item_resume_test");
+        let file_name = "resume_test.bin".to_string();
+        let existing_file = temp_dir.join(&file_name);
+        std::fs::write(&existing_file, initial_bytes).unwrap();
+
+        let status = Arc::new(Mutex::new(DownloadStatus::new(
+            DownloadObj::new(99, url, file_name.clone(), expected_content.len() as u64),
+            false,
+            false,
+            initial_bytes.len() as u64,
+        )));
+        let emitter = TestEventEmitter::default();
+
+        let result = download_item_with_emitter(status.clone(), temp_dir.clone(), &emitter).await;
+
+        server_handle.join().unwrap();
+        assert!(result.is_ok());
+
+        assert_eq!(std::fs::read(&existing_file).unwrap(), expected_content);
+
+        let reqs = requests.lock().unwrap();
+        let get_request = reqs
+            .iter()
+            .find(|request| request.starts_with("GET"))
+            .expect("Expected GET request to be captured")
+            .to_lowercase();
+        assert!(
+            get_request.contains("range: bytes=5-"),
+            "Expected resume range header in request, got: {}",
+            get_request
+        );
+        drop(reqs);
+
+        let status_guard = status.lock().await;
+        assert_eq!(status_guard.get_current_sz(), expected_content.len() as u64);
+        assert!(status_guard.is_pausable());
+        drop(status_guard);
+
+        std::fs::remove_file(existing_file).unwrap();
+        std::fs::remove_dir_all(temp_dir).unwrap();
+    }
 }

@@ -142,3 +142,90 @@ impl Display for DownloadInfo {
         write!(f, "id: {}, chunk_size: {}", self.id, self.chunk_size)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{DownloadInfo, DownloadObj, DownloadStatus};
+    use tokio::sync::Mutex;
+
+    fn sample_obj() -> DownloadObj {
+        DownloadObj::new(
+            11,
+            "https://example.com/archive.zip".to_string(),
+            "archive.zip".to_string(),
+            2048,
+        )
+    }
+
+    #[test]
+    fn download_obj_getters_and_setters_work() {
+        let mut obj = sample_obj();
+
+        assert_eq!(obj.get_id(), 11);
+        assert_eq!(obj.get_file_name(), "archive.zip");
+        assert_eq!(obj.get_url(), "https://example.com/archive.zip".to_string());
+        assert_eq!(obj.get_total_size(), 2048);
+
+        obj.set_id(99);
+        obj.set_file_name("renamed.zip".to_string());
+
+        assert_eq!(obj.get_id(), 99);
+        assert_eq!(obj.get_file_name(), "renamed.zip");
+    }
+
+    #[test]
+    fn download_status_state_transitions_work() {
+        let obj = sample_obj();
+        let mut status = DownloadStatus::new(obj, false, false, 12);
+
+        assert!(!status.is_paused());
+        assert!(!status.is_downloading());
+        assert!(!status.is_pausable());
+
+        status.set_pause();
+        assert!(status.is_paused());
+
+        status.set_downloading();
+        assert!(status.is_downloading());
+        assert!(!status.is_paused());
+
+        status.set_current_sz(33);
+        status.set_pausable(true);
+        assert_eq!(status.get_current_sz(), 33);
+        assert!(status.is_pausable());
+
+        status.set_item_id(77);
+        status.set_item_file_name("final.zip".to_string());
+        let item = status.get_item();
+        assert_eq!(item.get_id(), 77);
+        assert_eq!(item.get_file_name(), "final.zip");
+    }
+
+    #[tokio::test]
+    async fn download_status_can_be_cloned_from_mutex_guard() {
+        let status = DownloadStatus::new(sample_obj(), false, true, 123);
+        let mutex = Mutex::new(status.clone());
+        let guard = mutex.lock().await;
+
+        let from_guard = DownloadStatus::from_mutex_guard(&guard);
+        assert_eq!(from_guard, status);
+    }
+
+    #[test]
+    fn download_status_can_be_deserialized_from_string() {
+        let raw = r#"{"item":{"id":5,"url":"https://example.com/f","title":"f.zip","filesize":256},"paused":false,"downloading":true,"current_sz":64,"pausable":true}"#;
+
+        let status: DownloadStatus = raw.to_string().into();
+        assert_eq!(status.get_item().get_id(), 5);
+        assert_eq!(status.get_item().get_file_name(), "f.zip");
+        assert_eq!(status.get_current_sz(), 64);
+        assert!(status.is_downloading());
+        assert!(status.is_pausable());
+    }
+
+    #[test]
+    fn download_info_display_format_is_stable() {
+        let info = DownloadInfo::new(4, 1024);
+        assert_eq!(info.to_string(), "id: 4, chunk_size: 1024");
+    }
+}
